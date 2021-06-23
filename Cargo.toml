@@ -1,0 +1,9 @@
+[package]
+edition = "2018"
+name = "hck"
+version = "0.1.0"
+
+[dependencies]
+regex = "1.5.4"
+structopt = "0.3.21"
+thiserror = "1.0.25"

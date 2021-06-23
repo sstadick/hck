@@ -5,7 +5,6 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    process::exit,
     str::FromStr,
 };
 use structopt::StructOpt;
@@ -20,8 +19,6 @@ enum FieldError {
     InvalidOrder(usize, usize),
     #[error("Failed to parse field: {0}")]
     FailedParse(String),
-    #[error("No headers matched")]
-    NoHeadersMatched,
 }
 
 /// Represent a range of columns to keep.
@@ -110,47 +107,18 @@ impl FieldRange {
         for item in list.split(',') {
             ranges.push(FromStr::from_str(item)?);
         }
-        FieldRange::post_process_ranges(&mut ranges);
-
-        Ok(ranges)
-    }
-
-    /// Get the indices of the headers that match any of the provided regex's.
-    pub fn from_header_list(
-        list: &[Regex],
-        header: &str,
-        delim: &Regex,
-    ) -> Result<Vec<FieldRange>, FieldError> {
-        let mut ranges = vec![];
-        for (i, header) in delim.split(header).enumerate() {
-            for regex in list {
-                if regex.is_match(header) {
-                    ranges.push(FieldRange { low: i, high: i });
-                }
-            }
-        }
-
-        if ranges.is_empty() {
-            return Err(FieldError::NoHeadersMatched);
-        }
-
-        FieldRange::post_process_ranges(&mut ranges);
-
-        Ok(ranges)
-    }
-
-    /// Sort and merge overlaps in a set of [`Vec<FieldRange>`].
-    fn post_process_ranges(ranges: &mut Vec<FieldRange>) {
         ranges.sort();
         // merge overlapping ranges
         for i in 0..ranges.len() {
             let j = i + 1;
 
-            while j < ranges.len() && ranges[j].low <= ranges[i].high + 1 {
+            while j < ranges.len() && ranges[j].low <= ranges[i].high {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
             }
         }
+
+        Ok(ranges)
     }
 }
 
@@ -205,74 +173,46 @@ struct Opts {
     #[structopt(short = "D", long, default_value = "\t")]
     output_delimiter: String,
 
-    /// Fields to keep in the output, ex: 1,2-,-5,2-5. Fields are 1-based and inclusive.
-    #[structopt(short, long)]
-    fields: Option<String>,
+    /// Only output lines where a delimiter was found
+    #[structopt(short = "s", long)]
+    only_delimited: bool,
 
-    /// A regex to select headers, ex: '^is_.*$`.
-    #[structopt(short = "F", long)]
-    header_fields: Option<Vec<Regex>>,
+    /// Fields to keep in the output, ex: 1,2-,-5,2-5. Fields are 1-based and inclusive.
+    #[structopt(short, long, default_value = "1-")]
+    fields: String,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // TODO: add the complement argument to flip the FieldRange
-    // TODO: handle errors and pipe closing more gracefully
     let opts = Opts::from_args();
-    run(&opts)?;
-    Ok(())
-}
-
-/// Run the actual parsing and writing
-fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
+    let fields = FieldRange::from_list(&opts.fields)?;
     let mut reader = BufReader::new(select_input(opts.input.as_ref())?);
     let mut writer = BufWriter::new(select_output(opts.output.as_ref())?);
+
+    // TODO: add the complement argument to flip the FieldRange
+
     let mut buffer = String::new();
-    let mut skip_first_read = false;
-
-    let fields = match (&opts.fields, &opts.header_fields) {
-        (Some(field_list), Some(header_fields)) => {
-            reader.read_line(&mut buffer)?;
-            buffer.pop(); // remove newline
-            skip_first_read = true;
-            let mut fields = FieldRange::from_list(field_list)?;
-            let header_fields =
-                FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?;
-            fields.extend(header_fields.into_iter());
-            FieldRange::post_process_ranges(&mut fields);
-            fields
-        }
-        (Some(field_list), None) => FieldRange::from_list(field_list)?,
-        (None, Some(header_fields)) => {
-            reader.read_line(&mut buffer)?;
-            buffer.pop(); // remove newline
-            skip_first_read = true;
-            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?
-        }
-        (None, None) => {
-            eprintln!("Must select one or both `fields` and 'header-fields`.");
-            exit(1);
-        }
-    };
-
     loop {
-        // If we read the header line then use existing buffer.
-        if skip_first_read {
-            skip_first_read = false;
-        } else {
-            if reader.read_line(&mut buffer)? == 0 {
-                break;
-            }
-            // pop the newline off the string
-            buffer.pop();
+        if reader.read_line(&mut buffer)? == 0 {
+            break;
         }
+        // pop the newline off the string
+        buffer.pop();
 
         // Create a lazy splitter
         let mut parts = opts.delimiter.split(&buffer).peekable();
         let mut iterator_index = 0;
         let mut print_delim = false;
 
+        // If no delim is found, maybe write line and continue
+        if parts.peek().is_none() {
+            if !opts.only_delimited {
+                writeln!(&mut writer, "{}", buffer)?;
+            }
+            continue;
+        }
+
         // Iterate over our ranges and write any fields that are contained by them.
-        for &FieldRange { low, high } in &fields {
+        for (i, &FieldRange { low, high }) in fields.iter().enumerate() {
             // Advance up to low end of range
             if low > iterator_index {
                 match parts.nth(low - iterator_index - 1) {
@@ -284,14 +224,14 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             }
 
             // Advance through the range
-            for _ in 0..=high - low {
+            for j in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
-                        if print_delim {
+                        write!(&mut writer, "{}", part)?;
+                        // Print the separator if there is a next value AND we are not at the end of the ranges, or not at the end of the current range
+                        if (i < fields.len() || j < high - low) && parts.peek().is_some() {
                             write!(&mut writer, "{}", &opts.output_delimiter)?;
                         }
-                        write!(&mut writer, "{}", part)?;
-                        print_delim = true;
                     }
                     None => break,
                 }
@@ -307,237 +247,4 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
     writer.flush()?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    #[rustfmt::skip::macros(assert_eq)]
-    fn test_parse_fields_good() {
-        assert_eq!(vec![FieldRange { low: 0, high: 0 }], FieldRange::from_list("1").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: 3 }], FieldRange::from_list("1,4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 1 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,2,4-").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,4-,5-8").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 3 }], FieldRange::from_list("-4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 7 }], FieldRange::from_list("-4,5-8").unwrap());
-    }
-
-    #[test]
-    fn test_parse_fields_bad() {
-        assert!(FieldRange::from_list("0").is_err());
-        assert!(FieldRange::from_list("4-1").is_err());
-        assert!(FieldRange::from_list("cat").is_err());
-        assert!(FieldRange::from_list("1-dog").is_err());
-        assert!(FieldRange::from_list("mouse-4").is_err());
-    }
-
-    #[test]
-    fn test_parse_header_fields() {
-        let header = "is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
-        let delim = Regex::new("-").unwrap();
-        let header_fields = vec![
-            Regex::new(r"^is_.*$").unwrap(),
-            Regex::new("dog").unwrap(),
-            Regex::new(r"\$%").unwrap(),
-        ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim).unwrap();
-        assert_eq!(
-            vec![
-                FieldRange { low: 0, high: 1 },
-                FieldRange { low: 5, high: 5 }
-            ],
-            fields
-        );
-    }
-
-    /// Build a set of opts for testing
-    fn build_opts(
-        input_file: impl AsRef<Path>,
-        output_file: impl AsRef<Path>,
-        fields: &str,
-    ) -> Opts {
-        Opts {
-            input: Some(input_file.as_ref().to_path_buf()),
-            output: Some(output_file.as_ref().to_path_buf()),
-            delimiter: Regex::new(r"\s+").unwrap(),
-            output_delimiter: "\t".to_owned(),
-            fields: Some(fields.to_owned()),
-            header_fields: None,
-        }
-    }
-
-    /// Simple function to read a tsv into a nested list of lists.
-    fn read_tsv(path: impl AsRef<Path>) -> Vec<Vec<String>> {
-        let reader = BufReader::new(File::open(path).unwrap());
-        let mut result = vec![];
-        for line in reader.lines() {
-            let line = line.unwrap();
-            result.push(
-                line.split('\t')
-                    .map(|s| s.to_owned())
-                    .collect::<Vec<String>>(),
-            )
-        }
-        result
-    }
-
-    /// Write delmited data to a file.
-    fn write_file(path: impl AsRef<Path>, data: Vec<Vec<&str>>, sep: &str) {
-        let mut writer = BufWriter::new(File::create(path).unwrap());
-        for row in data {
-            writeln!(&mut writer, "{}", row.join(sep)).unwrap();
-        }
-        writer.flush().unwrap();
-    }
-
-    const FOURSPACE: &str = "    ";
-
-    #[test]
-    #[rustfmt::skip::macros(vec)]
-    fn test_read_single_values() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "1");
-        let data = vec![
-            vec!["a", "b", "c"],
-            vec!["1", "2", "3"],
-        ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(filtered, vec![vec!["a"], vec!["1"]]);
-    }
-
-    #[test]
-    fn test_read_several_single_values() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "1,3");
-        let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(filtered, vec![vec!["a", "c"], vec!["1", "3"]]);
-    }
-
-    #[test]
-    fn test_read_single_range() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2-");
-        let data = vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(filtered, vec![vec!["b", "c", "d"], vec!["2", "3", "4"]]);
-    }
-
-    #[test]
-    fn test_read_serveral_range() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2-4,6-");
-        let data = vec![
-            vec!["a", "b", "c", "d", "e", "f", "g"],
-            vec!["1", "2", "3", "4", "5", "6", "7"],
-        ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(
-            filtered,
-            vec![vec!["b", "c", "d", "f", "g"], vec!["2", "3", "4", "6", "7"]]
-        );
-    }
-
-    #[test]
-    fn test_read_mixed_fields1() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2,4-");
-        let data = vec![
-            vec!["a", "b", "c", "d", "e", "f", "g"],
-            vec!["1", "2", "3", "4", "5", "6", "7"],
-        ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(
-            filtered,
-            vec![vec!["b", "d", "e", "f", "g"], vec!["2", "4", "5", "6", "7"]]
-        );
-    }
-
-    #[test]
-    fn test_read_mixed_fields2() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,7");
-        let data = vec![
-            vec!["a", "b", "c", "d", "e", "f", "g"],
-            vec!["1", "2", "3", "4", "5", "6", "7"],
-        ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        assert_eq!(
-            filtered,
-            vec![vec!["a", "b", "c", "d", "g"], vec!["1", "2", "3", "4", "7"]]
-        );
-    }
-
-    #[test]
-    fn test_read_no_delimis_found() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,7");
-        let data = vec![
-            vec!["a", "b", "c", "d", "e", "f", "g"],
-            vec!["1", "2", "3", "4", "5", "6", "7"],
-        ];
-        write_file(input_file, data, "-");
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        // We hae no concept of only-delimited, so if no delim is found the whole line
-        // is treated as column 1.
-        assert_eq!(filtered, vec![vec!["a-b-c-d-e-f-g"], vec!["1-2-3-4-5-6-7"]]);
-    }
-
-    #[test]
-    fn test_read_over_end() {
-        let tmp = TempDir::new().unwrap();
-        let input_file = tmp.path().join("input.txt");
-        let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,8,11-");
-        let data = vec![
-            vec!["a", "b", "c", "d", "e", "f", "g"],
-            vec!["1", "2", "3", "4", "5", "6", "7"],
-        ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
-        let filtered = read_tsv(output_file);
-
-        // columns past end in fields are ignored
-        assert_eq!(
-            filtered,
-            vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]]
-        );
-    }
 }

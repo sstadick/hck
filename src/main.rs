@@ -201,7 +201,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Create a lazy splitter
         let mut parts = opts.delimiter.split(&buffer).peekable();
         let mut iterator_index = 0;
-        let mut print_delim = false;
 
         // If no delim is found, maybe write line and continue
         if parts.peek().is_none() {
@@ -228,7 +227,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match parts.next() {
                     Some(part) => {
                         write!(&mut writer, "{}", part)?;
-                        // Print the separator if there is a next value AND we are not at the end of the ranges, or not at the end of the current range
+                        // Print the separator if there is a next value AND (we are not at the end of the ranges, OR not at the end of the current range)
                         if (i < fields.len() || j < high - low) && parts.peek().is_some() {
                             write!(&mut writer, "{}", &opts.output_delimiter)?;
                         }

@@ -5,6 +5,7 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
+    process::exit,
     str::FromStr,
 };
 use structopt::StructOpt;
@@ -19,6 +20,8 @@ enum FieldError {
     InvalidOrder(usize, usize),
     #[error("Failed to parse field: {0}")]
     FailedParse(String),
+    #[error("No headers matched")]
+    NoHeadersMatched,
 }
 
 /// Represent a range of columns to keep.
@@ -107,18 +110,47 @@ impl FieldRange {
         for item in list.split(',') {
             ranges.push(FromStr::from_str(item)?);
         }
+        FieldRange::post_process_ranges(&mut ranges);
+
+        Ok(ranges)
+    }
+
+    /// Get the indices of the headers that match any of the provided regex's.
+    pub fn from_header_list(
+        list: &[Regex],
+        header: &str,
+        delim: &Regex,
+    ) -> Result<Vec<FieldRange>, FieldError> {
+        let mut ranges = vec![];
+        for (i, header) in delim.split(header).enumerate() {
+            for regex in list {
+                if regex.is_match(header) {
+                    ranges.push(FieldRange { low: i, high: i });
+                }
+            }
+        }
+
+        if ranges.is_empty() {
+            return Err(FieldError::NoHeadersMatched);
+        }
+
+        FieldRange::post_process_ranges(&mut ranges);
+
+        Ok(ranges)
+    }
+
+    /// Sort and merge overlaps in a set of [`Vec<FieldRange>`].
+    fn post_process_ranges(ranges: &mut Vec<FieldRange>) {
         ranges.sort();
         // merge overlapping ranges
         for i in 0..ranges.len() {
             let j = i + 1;
 
-            while j < ranges.len() && ranges[j].low <= ranges[i].high {
+            while j < ranges.len() && ranges[j].low <= ranges[i].high + 1 {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
             }
         }
-
-        Ok(ranges)
     }
 }
 
@@ -174,14 +206,17 @@ struct Opts {
     output_delimiter: String,
 
     /// Fields to keep in the output, ex: 1,2-,-5,2-5. Fields are 1-based and inclusive.
-    #[structopt(short, long, default_value = "1-")]
-    fields: String,
+    #[structopt(short, long)]
+    fields: Option<String>,
+
+    /// A regex to select headers, ex: '^is_.*$`.
+    #[structopt(short = "F", long)]
+    header_fields: Option<Vec<Regex>>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     // TODO: add the complement argument to flip the FieldRange
     // TODO: handle errors and pipe closing more gracefully
-    // TODO: allow header selectors in fields.
     let opts = Opts::from_args();
     run(&opts)?;
     Ok(())
@@ -191,17 +226,45 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
     let mut reader = BufReader::new(select_input(opts.input.as_ref())?);
     let mut writer = BufWriter::new(select_output(opts.output.as_ref())?);
-    let fields = FieldRange::from_list(&opts.fields)?;
-    // here get fields from either opts.fields or opts.headers (-F)
-    // if opts.headers read and parse the first line, figure out how make it uniform though
-
     let mut buffer = String::new();
-    loop {
-        if reader.read_line(&mut buffer)? == 0 {
-            break;
+    let mut skip_first_read = false;
+
+    let fields = match (&opts.fields, &opts.header_fields) {
+        (Some(field_list), Some(header_fields)) => {
+            reader.read_line(&mut buffer)?;
+            buffer.pop(); // remove newline
+            skip_first_read = true;
+            let mut fields = FieldRange::from_list(field_list)?;
+            let header_fields =
+                FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?;
+            fields.extend(header_fields.into_iter());
+            FieldRange::post_process_ranges(&mut fields);
+            fields
         }
-        // pop the newline off the string
-        buffer.pop();
+        (Some(field_list), None) => FieldRange::from_list(field_list)?,
+        (None, Some(header_fields)) => {
+            reader.read_line(&mut buffer)?;
+            buffer.pop(); // remove newline
+            skip_first_read = true;
+            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?
+        }
+        (None, None) => {
+            eprintln!("Must select one or both `fields` and 'header-fields`.");
+            exit(1);
+        }
+    };
+
+    loop {
+        // If we read the header line then use existing buffer.
+        if skip_first_read {
+            skip_first_read = false;
+        } else {
+            if reader.read_line(&mut buffer)? == 0 {
+                break;
+            }
+            // pop the newline off the string
+            buffer.pop();
+        }
 
         // Create a lazy splitter
         let mut parts = opts.delimiter.split(&buffer).peekable();
@@ -256,10 +319,10 @@ mod test {
     fn test_parse_fields_good() {
         assert_eq!(vec![FieldRange { low: 0, high: 0 }], FieldRange::from_list("1").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: 3 }], FieldRange::from_list("1,4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,4-").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 1 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,2,4-").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,4-,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 3 }], FieldRange::from_list("-4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 3 },  FieldRange { low: 4, high: 7 }], FieldRange::from_list("-4,5-8").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 7 }], FieldRange::from_list("-4,5-8").unwrap());
     }
 
     #[test]
@@ -269,6 +332,25 @@ mod test {
         assert!(FieldRange::from_list("cat").is_err());
         assert!(FieldRange::from_list("1-dog").is_err());
         assert!(FieldRange::from_list("mouse-4").is_err());
+    }
+
+    #[test]
+    fn test_parse_header_fields() {
+        let header = "is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
+        let delim = Regex::new("-").unwrap();
+        let header_fields = vec![
+            Regex::new(r"^is_.*$").unwrap(),
+            Regex::new("dog").unwrap(),
+            Regex::new(r"\$%").unwrap(),
+        ];
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim).unwrap();
+        assert_eq!(
+            vec![
+                FieldRange { low: 0, high: 1 },
+                FieldRange { low: 5, high: 5 }
+            ],
+            fields
+        );
     }
 
     /// Build a set of opts for testing
@@ -282,7 +364,8 @@ mod test {
             output: Some(output_file.as_ref().to_path_buf()),
             delimiter: Regex::new(r"\s+").unwrap(),
             output_delimiter: "\t".to_owned(),
-            fields: fields.to_owned(),
+            fields: Some(fields.to_owned()),
+            header_fields: None,
         }
     }
 

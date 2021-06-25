@@ -21,6 +21,7 @@ A close to drop in replacement for cut that uses a regex delimiter instead of a 
 
 - Add complement argument
 - Handle pipe closing and such more gracefully
+- Update CI
 
 ## References
 

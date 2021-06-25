@@ -7,6 +7,7 @@ A close to drop in replacement for cut that uses a regex delmiter instead of a f
 ## TODO
 
 - Add complement argument
+- Add nice paginated tabular output like `bat` when pipe into terminal
 
 ## References
 

@@ -29,6 +29,8 @@ enum FieldError {
 struct FieldRange {
     low: usize,
     high: usize,
+    // The initial position of this range in the user input
+    pos: usize,
 }
 
 impl FromStr for FieldRange {
@@ -47,6 +49,7 @@ impl FromStr for FieldRange {
                         Ok(FieldRange {
                             low: nm - 1,
                             high: nm - 1,
+                            pos: 0,
                         })
                     } else {
                         Err(FieldError::InvalidField(nm))
@@ -61,6 +64,7 @@ impl FromStr for FieldRange {
                         Ok(FieldRange {
                             low: low - 1,
                             high: MAX - 1,
+                            pos: 0,
                         })
                     } else {
                         Err(FieldError::InvalidField(low))
@@ -75,6 +79,7 @@ impl FromStr for FieldRange {
                         Ok(FieldRange {
                             low: 0,
                             high: high - 1,
+                            pos: 0,
                         })
                     } else {
                         Err(FieldError::InvalidField(high))
@@ -89,6 +94,7 @@ impl FromStr for FieldRange {
                         Ok(FieldRange {
                             low: low - 1,
                             high: high - 1,
+                            pos: 0,
                         })
                     } else if low == 0 {
                         Err(FieldError::InvalidField(low))
@@ -107,8 +113,10 @@ impl FieldRange {
     /// Parse a comma separated list of fields and merge any overlaps
     pub fn from_list(list: &str) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges: Vec<FieldRange> = vec![];
-        for item in list.split(',') {
-            ranges.push(FromStr::from_str(item)?);
+        for (i, item) in list.split(',').enumerate() {
+            let mut rnge: FieldRange = FromStr::from_str(item)?;
+            rnge.pos = i;
+            ranges.push(rnge);
         }
         FieldRange::post_process_ranges(&mut ranges);
 
@@ -120,12 +128,25 @@ impl FieldRange {
         list: &[Regex],
         header: &str,
         delim: &Regex,
+        literal: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];
         for (i, header) in delim.split(header).enumerate() {
-            for regex in list {
-                if regex.is_match(header) {
-                    ranges.push(FieldRange { low: i, high: i });
+            for (j, regex) in list.iter().enumerate() {
+                if literal {
+                    if regex.as_str() == header {
+                        ranges.push(FieldRange {
+                            low: i,
+                            high: i,
+                            pos: j,
+                        });
+                    }
+                } else if regex.is_match(header) {
+                    ranges.push(FieldRange {
+                        low: i,
+                        high: i,
+                        pos: j,
+                    });
                 }
             }
         }
@@ -146,7 +167,10 @@ impl FieldRange {
         for i in 0..ranges.len() {
             let j = i + 1;
 
-            while j < ranges.len() && ranges[j].low <= ranges[i].high + 1 {
+            while j < ranges.len()
+                && ranges[j].low <= ranges[i].high + 1
+                && (ranges[j].pos == ranges[i].pos || ranges[j].pos - 1 == ranges[i].pos)
+            {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
             }
@@ -185,7 +209,22 @@ fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write>, io
     Ok(writer)
 }
 
-/// A rougher form of the unix tool `cut` that uses a regex delimiter instead of a fixed string.
+/// Select and reorder columns.
+///
+/// This tool behaves like unix `cut` with a few exceptions:
+///
+/// * `delimiter` is a regex and not a fixed string
+/// * `header-fields` allows for specifying a regex to match header names to select columns
+/// * both `header-fields` and `fields` order dictate the order of the output columns
+///
+/// *Note* regarding output ordering: values are written only once. So for a `fields` value of `4-,1,5-8`,
+/// which translates to "print columns 4 through the end and then the last column and then columns 5 through 8",
+/// columns 5-8 won't be printed again because they were already consumed by the `4-` range.
+///
+/// If `field-headers` is used as a regex then the headers will be be grouped together in groups that all matched the
+/// same regex, and in the order of the regex as specified on the CLI.
+///
+/// *Note* if a line does not contain all columns, those columns will not be printed. i.e. jagged rows will remain jagged.
 #[derive(Debug, StructOpt)]
 #[structopt(name = "hck", about = "A regex based version of cut.")]
 struct Opts {
@@ -212,6 +251,10 @@ struct Opts {
     /// A regex to select headers, ex: '^is_.*$`.
     #[structopt(short = "F", long)]
     header_fields: Option<Vec<Regex>>,
+
+    /// Treat the header_fields as string literals instead of regex's
+    #[structopt(short = "L", long)]
+    literal: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -235,8 +278,12 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             buffer.pop(); // remove newline
             skip_first_read = true;
             let mut fields = FieldRange::from_list(field_list)?;
-            let header_fields =
-                FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?;
+            let header_fields = FieldRange::from_header_list(
+                header_fields,
+                &buffer,
+                &opts.delimiter,
+                opts.literal,
+            )?;
             fields.extend(header_fields.into_iter());
             FieldRange::post_process_ranges(&mut fields);
             fields
@@ -246,7 +293,7 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             reader.read_line(&mut buffer)?;
             buffer.pop(); // remove newline
             skip_first_read = true;
-            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter)?
+            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
         }
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
@@ -254,6 +301,20 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
         }
     };
 
+    // This vec is reused with each pass of the loop. It holds a vec for each FieldRange. Values
+    // are pushed onto each FieldRange's vec and then printed at the end of the loop. This allows
+    // values to be printed in the order specified by the user since a FieldRange will be push values
+    // onto the index indicated by FieldRange.pos.
+    //
+    // Below, we are creating a new variable in the loop, `staging`, to coerce the `str`'s lifetime
+    // to a short lifetime consistent with the lifetime of the loop. Then, after draining the values
+    // from the inner vecs we are turning `staging_empty` back into `Vec<Vec<&'static>>`, again by
+    // coercion. In theory this should all be zero cost due to
+    // [InPlaceIterable](https://doc.rust-lang.org/std/iter/trait.InPlaceIterable.html). Godbolt proves
+    // this is so as well. See links in the linked rust-lang thread.
+    //
+    // See also https://users.rust-lang.org/t/review-of-unsafe-usage/61520
+    let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
     loop {
         // If we read the header line then use existing buffer.
         if skip_first_read {
@@ -270,9 +331,10 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
         let mut parts = opts.delimiter.split(&buffer).peekable();
         let mut iterator_index = 0;
         let mut print_delim = false;
+        let mut staging = staging_empty;
 
         // Iterate over our ranges and write any fields that are contained by them.
-        for &FieldRange { low, high } in &fields {
+        for &FieldRange { low, high, pos } in &fields {
             // Advance up to low end of range
             if low > iterator_index {
                 match parts.nth(low - iterator_index - 1) {
@@ -287,25 +349,36 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             for _ in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
-                        if print_delim {
-                            write!(&mut writer, "{}", &opts.output_delimiter)?;
-                        }
-                        write!(&mut writer, "{}", part)?;
-                        print_delim = true;
+                        staging[pos].push(part);
                     }
                     None => break,
                 }
                 iterator_index += 1;
             }
         }
+
+        // Now write the values in the correct order
+        // The `collect` calls here should be happening in place resulting in no allocations.
+        staging_empty = staging
+            .into_iter()
+            .map(|mut values| {
+                for value in values.drain(..) {
+                    if print_delim {
+                        write!(&mut writer, "{}", &opts.output_delimiter).unwrap();
+                    }
+                    print_delim = true;
+                    write!(&mut writer, "{}", value).unwrap();
+                }
+                values.into_iter().map(|_| "").collect()
+            })
+            .collect();
+
         // Write endline
         writeln!(&mut writer)?;
-
-        buffer.clear()
+        buffer.clear();
     }
 
     writer.flush()?;
-
     Ok(())
 }
 
@@ -317,12 +390,13 @@ mod test {
     #[test]
     #[rustfmt::skip::macros(assert_eq)]
     fn test_parse_fields_good() {
-        assert_eq!(vec![FieldRange { low: 0, high: 0 }], FieldRange::from_list("1").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: 3 }], FieldRange::from_list("1,4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 1 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,2,4-").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0 },  FieldRange { low: 3, high: usize::MAX - 1 }], FieldRange::from_list("1,4-,5-8").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 3 }], FieldRange::from_list("-4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 7 }], FieldRange::from_list("-4,5-8").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0}], FieldRange::from_list("1").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: 3, pos: 1}], FieldRange::from_list("1,4").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 2}], FieldRange::from_list("1,2,4-").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 1}], FieldRange::from_list("1,4-,5-8").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1},  FieldRange { low: 3, high: usize::MAX - 1, pos: 0}, FieldRange { low: 4, high: 7, pos: 2}], FieldRange::from_list("4-,1,5-8").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 7, pos: 0}], FieldRange::from_list("-4,5-8").unwrap());
     }
 
     #[test]
@@ -343,12 +417,41 @@ mod test {
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim).unwrap();
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
         assert_eq!(
             vec![
-                FieldRange { low: 0, high: 1 },
-                FieldRange { low: 5, high: 5 }
+                FieldRange {
+                    low: 0,
+                    high: 1,
+                    pos: 0
+                },
+                FieldRange {
+                    low: 5,
+                    high: 5,
+                    pos: 2 // pos 2 because it's the 3rd regex in header_fields
+                }
             ],
+            fields
+        );
+    }
+
+    #[test]
+    fn test_parse_header_fields_literal() {
+        let header = "is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
+        let delim = Regex::new("-").unwrap();
+        let header_fields = vec![
+            Regex::new(r"^is_.*$").unwrap(),
+            Regex::new("dog").unwrap(),
+            Regex::new(r"\$%").unwrap(),
+            Regex::new(r"is").unwrap(),
+        ];
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim, true).unwrap();
+        assert_eq!(
+            vec![FieldRange {
+                low: 1,
+                high: 1,
+                pos: 3
+            },],
             fields
         );
     }
@@ -366,6 +469,7 @@ mod test {
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
+            literal: false,
         }
     }
 
@@ -538,6 +642,52 @@ mod test {
         assert_eq!(
             filtered,
             vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]]
+        );
+    }
+
+    #[test]
+    fn test_reorder1() {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts(&input_file, &output_file, "6,-4");
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(input_file, data, FOURSPACE);
+        run(&opts).unwrap();
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![vec!["f", "a", "b", "c", "d"], vec!["6", "1", "2", "3", "4"]]
+        );
+    }
+
+    #[test]
+    fn test_reorder2() {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "3-,1,4-5");
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(input_file, data, FOURSPACE);
+        run(&opts).unwrap();
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["c", "d", "e", "f", "g", "a"],
+                vec!["3", "4", "5", "6", "7", "1"]
+            ]
         );
     }
 }

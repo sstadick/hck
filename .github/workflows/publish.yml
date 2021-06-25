@@ -18,9 +18,9 @@ jobs:
           - os: macos-latest
             artifact_name: hck
             asset_name: hck-macos-amd64
-          - os: windows-latest
-            artifact_name: hck
-            asset_name: windows-macos-amd64
+          # - os: windows-latest
+          #   artifact_name: hck
+          #   asset_name: windows-macos-amd64
 
     steps:
       - uses: actions/checkout@v2

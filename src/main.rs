@@ -3,6 +3,7 @@ use std::{
     cmp::max,
     error::Error,
     fs::File,
+    hint::unreachable_unchecked,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
     mem,
     path::{Path, PathBuf},
@@ -307,8 +308,8 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
     // values to be printed in the order specified by the user since a FieldRange will be push values
     // onto the index indicated by FieldRange.pos.
     //
-    // After all values have been cleared each FieldRange's vec is cleared.
-    let mut staging: Vec<Vec<&str>> = vec![vec![]; fields.len()];
+    // After all values have been written each FieldRange's vec is cleared.
+    let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
     loop {
         // If we read the header line then use existing buffer.
         if skip_first_read {
@@ -326,12 +327,14 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
         // - References of interest are stored in the `staging` vec of vecs
         // - At the end of this loop, before clearing the buffer, values from staging are printed
         // - Staging is then cleared of values to make it safe to reuse
-        let buf: &String = unsafe { mem::transmute(&buffer) };
+        // let buf: &String = unsafe { mem::transmute(&buffer) };
+        // let mut staging = staging_empty;
 
         // Create a lazy splitter
-        let mut parts = opts.delimiter.split(buf).peekable();
+        let mut parts = opts.delimiter.split(&buffer).peekable();
         let mut iterator_index = 0;
         let mut print_delim = false;
+        let mut staging = staging_empty;
 
         // Iterate over our ranges and write any fields that are contained by them.
         for &FieldRange { low, high, pos } in &fields {
@@ -358,19 +361,32 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
         }
 
         // Now write the values in the correct order
-        for values in &mut staging {
-            if values.is_empty() {
-                continue;
-            }
-            for value in values.iter() {
-                if print_delim {
-                    write!(&mut writer, "{}", &opts.output_delimiter)?;
+        staging_empty = staging
+            .into_iter()
+            .map(|mut values| {
+                for value in values.drain(..) {
+                    if print_delim {
+                        write!(&mut writer, "{}", &opts.output_delimiter).unwrap();
+                    }
+                    print_delim = true;
+                    write!(&mut writer, "{}", value).unwrap();
                 }
-                print_delim = true;
-                write!(&mut writer, "{}", value)?;
-            }
-            values.clear();
-        }
+                values.into_iter().take(0).map(|_| "").collect()
+            })
+            .collect();
+        // for values in &mut staging {
+        //     if values.is_empty() {
+        //         continue;
+        //     }
+        //     for value in values.iter() {
+        //         if print_delim {
+        //             write!(&mut writer, "{}", &opts.output_delimiter)?;
+        //         }
+        //         print_delim = true;
+        //         write!(&mut writer, "{}", value)?;
+        //     }
+        //     values.clear();
+        // }
 
         // Write endline
         writeln!(&mut writer)?;

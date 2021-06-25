@@ -17,6 +17,20 @@ A close to drop in replacement for cut that uses a regex delimiter instead of a 
 - Selection of columns by header regex with the `-F` option, or by string literal by setting the `-L` flag
 - As fast as cut or awk
 
+## Install
+
+With the Rust toolchain:
+
+```bash
+cargo install hck
+```
+
+From the releases page:
+
+```bash
+wget ...
+```
+
 ## TODO
 
 - Add complement argument

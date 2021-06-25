@@ -1,15 +1,15 @@
 # hck
 
-A close to drop in replacement for cut that uses a regex delmiter instead of a fixed string. This aims to be faster than the equivalent one-liner in awk or perl.
+_`hck` is a shortening of `hack`, a rougher form of `cut`._
 
-`hck` is a shortening of `hack`, a rougher form of `cut`.
-
+A close to drop in replacement for cut that uses a regex delmiter instead of a fixed string. Additionally this tool allows for specification of the order of the output columns using the same column selection syntax as cut (see below for examples).
 
 ## Features
 
-- As fast or faster than `cut`, lazy splitting
+- Reordering of output columns! i.e. if you use `-f4,2,8` the output columns will appear in the order `4`, `2`, `8`
 - Regex delimiter, i.e. you can split on multiple spaces without and extra pipe to `tr`!
-- Selection of columns by header regex with the `-F` option
+- Selection of columns by header regex with the `-F` option, or by string literal by setting the `-L` flag
+- As fast as cut or awk
 
 ## TODO
 

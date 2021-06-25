@@ -3,9 +3,7 @@ use std::{
     cmp::max,
     error::Error,
     fs::File,
-    hint::unreachable_unchecked,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
-    mem,
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
@@ -308,7 +306,14 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
     // values to be printed in the order specified by the user since a FieldRange will be push values
     // onto the index indicated by FieldRange.pos.
     //
-    // After all values have been written each FieldRange's vec is cleared.
+    // Below, we are creating a new variable in the loop, `staging`, to coerce the `str`'s lifetime
+    // to a short lifetime consistent with the lifetime of the loop. Then, after draining the values
+    // from the inner vecs we are turning `staging_empty` back into `Vec<Vec<&'static>>`, again by
+    // coercion. In theory this should all be zero cost due to
+    // [InPlaceIterable](https://doc.rust-lang.org/std/iter/trait.InPlaceIterable.html). Godbolt proves
+    // this is so as well. See links in the linked rust-lang thread.
+    //
+    // See also https://users.rust-lang.org/t/review-of-unsafe-usage/61520
     let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
     loop {
         // If we read the header line then use existing buffer.
@@ -321,14 +326,6 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             // pop the newline off the string
             buffer.pop();
         }
-
-        // Safety: Get an immutable borrow of the buffer despite mutable borrows elsewhere
-        // - The references to buffer are created by the regex split.
-        // - References of interest are stored in the `staging` vec of vecs
-        // - At the end of this loop, before clearing the buffer, values from staging are printed
-        // - Staging is then cleared of values to make it safe to reuse
-        // let buf: &String = unsafe { mem::transmute(&buffer) };
-        // let mut staging = staging_empty;
 
         // Create a lazy splitter
         let mut parts = opts.delimiter.split(&buffer).peekable();
@@ -361,6 +358,7 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
         }
 
         // Now write the values in the correct order
+        // The `collect` calls here should be happening in place resulting in no allocations.
         staging_empty = staging
             .into_iter()
             .map(|mut values| {
@@ -371,22 +369,9 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
                     print_delim = true;
                     write!(&mut writer, "{}", value).unwrap();
                 }
-                values.into_iter().take(0).map(|_| "").collect()
+                values.into_iter().map(|_| "").collect()
             })
             .collect();
-        // for values in &mut staging {
-        //     if values.is_empty() {
-        //         continue;
-        //     }
-        //     for value in values.iter() {
-        //         if print_delim {
-        //             write!(&mut writer, "{}", &opts.output_delimiter)?;
-        //         }
-        //         print_delim = true;
-        //         write!(&mut writer, "{}", value)?;
-        //     }
-        //     values.clear();
-        // }
 
         // Write endline
         writeln!(&mut writer)?;

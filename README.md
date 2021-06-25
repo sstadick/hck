@@ -14,9 +14,7 @@ A close to drop in replacement for cut that uses a regex delmiter instead of a f
 ## TODO
 
 - Add complement argument
-- Allow reordering of outputs
-  - Maybe store each column as things are read in order, then reorder and print... but how to not be slow?
-- Find a way to treate some headers as literal so they don't have to be wrapped in `^$`
+- Handle pipe closing and such more gracefully
 - Add nice paginated tabular output like `bat` when pipe into terminal
 
 ## References

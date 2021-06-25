@@ -1,7 +1,7 @@
 # 🪓 hck
 
 <p align="center">
-  <a href="https://github.com/sstadick/hck/actions?query=workflow%3ACICD"><img src="https://github.com/sstadick/hck/workflows/CICD/badge.svg" alt="Build Status"></a>
+  <a href="https://github.com/sstadick/hck/actions?query=workflow%3ACheck"><img src="https://github.com/sstadick/hck/workflows/CICD/badge.svg" alt="Build Status"></a>
   <img src="https://img.shields.io/crates/l/hck.svg" alt="license">
   <a href="https://crates.io/crates/hck"><img src="https://img.shields.io/crates/v/hck.svg?colorB=319e8c" alt="Version info"></a><br>
   A sharp <i>cut(1)</i> clone.

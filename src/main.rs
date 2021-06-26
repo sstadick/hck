@@ -1,15 +1,48 @@
+use anyhow::{Context, Error, Result};
+use env_logger::Env;
+use grep_cli::{stdout, DecompressionReaderBuilder};
+use log::error;
 use regex::Regex;
 use std::{
     cmp::max,
-    error::Error,
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     process::exit,
     str::FromStr,
 };
-use structopt::StructOpt;
+use structopt::{clap::AppSettings::ColoredHelp, StructOpt};
+use termcolor::ColorChoice;
 use thiserror::Error;
+
+pub mod built_info {
+    use structopt::lazy_static::lazy_static;
+
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+
+    /// Get a software version string including
+    ///   - Git commit hash
+    ///   - Git dirty info (whether the repo had uncommitted changes)
+    ///   - Cargo package version if no git info found
+    fn get_software_version() -> String {
+        let prefix = if let Some(s) = GIT_COMMIT_HASH {
+            format!("{}-{}", PKG_VERSION, s[0..8].to_owned())
+        } else {
+            // This shouldn't happen
+            format!("No-git-info-found:CargoPkgVersion{}", PKG_VERSION)
+        };
+        let suffix = match GIT_DIRTY {
+            Some(true) => "-dirty",
+            _ => "",
+        };
+        format!("{}{}", prefix, suffix)
+    }
+
+    lazy_static! {
+        /// Version of the software with git hash
+        pub static ref VERSION: String = get_software_version();
+    }
+}
 
 /// Errors for parsing / validating [`FieldRange`] strings.
 #[derive(Error, Debug)]
@@ -179,34 +212,68 @@ impl FieldRange {
 }
 
 /// Determine whether we should read from a file or stdin.
-fn select_input<P: AsRef<Path>>(input: Option<P>) -> Result<Box<dyn Read>, io::Error> {
-    let reader: Box<dyn Read> = match input {
-        Some(path) => {
-            if path.as_ref().as_os_str() == "-" {
-                Box::new(io::stdin())
-            } else {
-                Box::new(File::open(path)?)
-            }
-        }
-        None => Box::new(io::stdin()),
+fn select_input<P: AsRef<Path>>(path: P) -> Result<Box<dyn Read>> {
+    let reader: Box<dyn Read> = if path.as_ref().as_os_str() == "-" {
+        get_stdin()
+    } else {
+        Box::new(
+            DecompressionReaderBuilder::new()
+                .build(&path)
+                .with_context(|| {
+                    format!("Failed to open {} for reading", path.as_ref().display())
+                })?,
+        )
     };
     Ok(reader)
 }
 
+#[inline]
+fn get_stdin() -> Box<dyn Read> {
+    Box::new(io::stdin())
+}
+
 /// Determine if we should write to a file or stdout.
-fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write>, io::Error> {
+fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write>> {
     let writer: Box<dyn Write> = match output {
         Some(path) => {
             if path.as_ref().as_os_str() == "-" {
                 // TODO: verify that stdout buffers when writing to a terminal now (this was a bug in Rust at some point).
-                Box::new(io::stdout())
+                Box::new(stdout(ColorChoice::Never))
             } else {
-                Box::new(File::create(path)?)
+                Box::new(File::create(&path).with_context(|| {
+                    format!("Failed to open {} for writing.", path.as_ref().display())
+                })?)
             }
         }
-        None => Box::new(io::stdout()),
+        None => Box::new(stdout(ColorChoice::Never)),
     };
     Ok(writer)
+}
+
+/// Check if err is a broken pipe.
+#[inline]
+fn is_broken_pipe(err: &Error) -> bool {
+    if let Some(io_err) = err.downcast_ref::<io::Error>() {
+        if io_err.kind() == io::ErrorKind::BrokenPipe {
+            return true;
+        }
+    }
+    false
+}
+
+/// Handle io errors in awkward spots.
+///
+/// Technically this can handle much more than just io errors, but the main use case is the
+/// writes inside the closure that is being coerced back to a specific type.
+#[inline]
+fn handle_io_error(result: Result<()>) {
+    if let Err(err) = result {
+        if is_broken_pipe(&err) {
+            exit(0);
+        }
+        error!("{}", err);
+        exit(1)
+    }
 }
 
 /// Select and reorder columns.
@@ -216,21 +283,36 @@ fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write>, io
 /// * `delimiter` is a regex and not a fixed string
 /// * `header-fields` allows for specifying a regex to match header names to select columns
 /// * both `header-fields` and `fields` order dictate the order of the output columns
+/// * input files (not stdin) are automatically compressed
+/// * the output delimiter can specified with `-D`
 ///
-/// *Note* regarding output ordering: values are written only once. So for a `fields` value of `4-,1,5-8`,
-/// which translates to "print columns 4 through the end and then the last column and then columns 5 through 8",
-/// columns 5-8 won't be printed again because they were already consumed by the `4-` range.
+/// ## Selection by headers
+///
+/// Instead of specifying fields to output by index ranges (i.e `1-2,4-`), you can specify a regex or string literal
+/// to select a headered column to output with the `-F` option. By default `-F` options are treated as regex's. To
+/// treat them as string literals add the `-L` flag.
+///
+/// ## Ordering of outputs
+///
+/// *Values are written only once*. So for a `fields` value of `4-,1,5-8`, which translates to "print columns 4 through
+/// the end and then the last column and then columns 5 through 8", columns 5-8 won't be printed again because they
+/// were already consumed by the `4-` range.
 ///
 /// If `field-headers` is used as a regex then the headers will be be grouped together in groups that all matched the
 /// same regex, and in the order of the regex as specified on the CLI.
-///
-/// *Note* if a line does not contain all columns, those columns will not be printed. i.e. jagged rows will remain jagged.
 #[derive(Debug, StructOpt)]
-#[structopt(name = "hck", about = "A regex based version of cut.")]
+#[structopt(
+    name = "hck",
+    author,
+    global_setting(ColoredHelp),
+    version = built_info::VERSION.as_str()
+)]
 struct Opts {
-    /// Input files to parse, defaults to stdin
-    #[structopt(short, long)]
-    input: Option<PathBuf>,
+    /// Input files to parse, defaults to stdin.
+    ///
+    /// If a file has a recognizable file extension indicating that it is compressed, and a local binary
+    /// to perform decompression is found, decompression will occur automagically.
+    input: Vec<PathBuf>,
 
     /// Output file to write to, defaults to stdout
     #[structopt(short, long)]
@@ -257,18 +339,41 @@ struct Opts {
     literal: bool,
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     // TODO: add the complement argument to flip the FieldRange
-    // TODO: handle errors and pipe closing more gracefully
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
-    run(&opts)?;
+    let mut writer = BufWriter::new(select_output(opts.output.as_ref())?);
+
+    let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
+        vec![Ok(get_stdin())]
+    } else {
+        opts.input
+            .iter()
+            .map(|p| select_input(p, opts.try_decompression))
+            .collect()
+    };
+
+    for r in readers {
+        let r = r?;
+        let mut reader = BufReader::new(r);
+        if let Err(err) = run(&mut reader, &mut writer, &opts) {
+            if is_broken_pipe(&err) {
+                exit(0)
+            }
+            error!("{}", err);
+            exit(1)
+        }
+    }
     Ok(())
 }
 
 /// Run the actual parsing and writing
-fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
-    let mut reader = BufReader::new(select_input(opts.input.as_ref())?);
-    let mut writer = BufWriter::new(select_output(opts.output.as_ref())?);
+fn run<R: Read, W: Write>(
+    reader: &mut BufReader<R>,
+    writer: &mut BufWriter<W>,
+    opts: &Opts,
+) -> Result<()> {
     let mut buffer = String::new();
     let mut skip_first_read = false;
 
@@ -364,17 +469,22 @@ fn run(opts: &Opts) -> Result<(), Box<dyn Error>> {
             .map(|mut values| {
                 for value in values.drain(..) {
                     if print_delim {
-                        write!(&mut writer, "{}", &opts.output_delimiter).unwrap();
+                        handle_io_error(
+                            write!(writer, "{}", &opts.output_delimiter)
+                                .with_context(|| "Error writing output"),
+                        );
                     }
                     print_delim = true;
-                    write!(&mut writer, "{}", value).unwrap();
+                    handle_io_error(
+                        write!(writer, "{}", value).with_context(|| "Error writing output"),
+                    );
                 }
                 values.into_iter().map(|_| "").collect()
             })
             .collect();
 
         // Write endline
-        writeln!(&mut writer)?;
+        writeln!(writer)?;
         buffer.clear();
     }
 
@@ -463,7 +573,7 @@ mod test {
         fields: &str,
     ) -> Opts {
         Opts {
-            input: Some(input_file.as_ref().to_path_buf()),
+            input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
             delimiter: Regex::new(r"\s+").unwrap(),
             output_delimiter: "\t".to_owned(),
@@ -497,6 +607,13 @@ mod test {
         writer.flush().unwrap();
     }
 
+    // Wrap the run function to create the readers and writers.
+    fn run_wrapper<P: AsRef<Path>>(input: P, output: P, opts: &Opts) {
+        let mut reader = BufReader::new(File::open(input).unwrap());
+        let mut writer = BufWriter::new(File::create(output).unwrap());
+        run(&mut reader, &mut writer, opts).unwrap();
+    }
+
     const FOURSPACE: &str = "    ";
 
     #[test]
@@ -510,8 +627,8 @@ mod test {
             vec!["a", "b", "c"],
             vec!["1", "2", "3"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(filtered, vec![vec!["a"], vec!["1"]]);
@@ -524,8 +641,8 @@ mod test {
         let output_file = tmp.path().join("output.txt");
         let opts = build_opts(&input_file, &output_file, "1,3");
         let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(filtered, vec![vec!["a", "c"], vec!["1", "3"]]);
@@ -538,8 +655,8 @@ mod test {
         let output_file = tmp.path().join("output.txt");
         let opts = build_opts(&input_file, &output_file, "2-");
         let data = vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(filtered, vec![vec!["b", "c", "d"], vec!["2", "3", "4"]]);
@@ -555,8 +672,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(
@@ -575,8 +692,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(
@@ -595,8 +712,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         assert_eq!(
@@ -615,8 +732,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, "-");
-        run(&opts).unwrap();
+        write_file(&input_file, data, "-");
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         // We hae no concept of only-delimited, so if no delim is found the whole line
@@ -634,8 +751,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         // columns past end in fields are ignored
@@ -655,8 +772,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         // columns past end in fields are ignored
@@ -677,8 +794,8 @@ mod test {
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(input_file, data, FOURSPACE);
-        run(&opts).unwrap();
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
         // columns past end in fields are ignored

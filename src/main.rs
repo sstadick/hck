@@ -348,10 +348,7 @@ fn main() -> Result<()> {
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
     } else {
-        opts.input
-            .iter()
-            .map(|p| select_input(p, opts.try_decompression))
-            .collect()
+        opts.input.iter().map(select_input).collect()
     };
 
     for r in readers {

@@ -12,7 +12,7 @@ categories = ["text-processing", "command-line-interface"]
 keywords = ["text", "cli"]
 
 [profile.release]
-lto = true
+lto = "fat"
 codegen-units = 1
 
 [dependencies]

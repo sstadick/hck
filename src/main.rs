@@ -212,18 +212,23 @@ impl FieldRange {
 }
 
 /// Determine whether we should read from a file or stdin.
-fn select_input<P: AsRef<Path>>(path: P) -> Result<Box<dyn Read>> {
-    let reader: Box<dyn Read> = if path.as_ref().as_os_str() == "-" {
-        get_stdin()
-    } else {
-        Box::new(
-            DecompressionReaderBuilder::new()
-                .build(&path)
-                .with_context(|| {
-                    format!("Failed to open {} for reading", path.as_ref().display())
-                })?,
-        )
-    };
+fn select_input<P: AsRef<Path>>(path: P, try_decompress: bool) -> Result<Box<dyn Read>> {
+    let reader: Box<dyn Read> =
+        if path.as_ref().as_os_str() == "-" {
+            get_stdin()
+        } else if try_decompress {
+            Box::new(
+                DecompressionReaderBuilder::new()
+                    .build(&path)
+                    .with_context(|| {
+                        format!("Failed to open {} for reading", path.as_ref().display())
+                    })?,
+            )
+        } else {
+            Box::new(File::open(&path).with_context(|| {
+                format!("Failed to open {} for reading", path.as_ref().display())
+            })?)
+        };
     Ok(reader)
 }
 
@@ -311,7 +316,7 @@ struct Opts {
     /// Input files to parse, defaults to stdin.
     ///
     /// If a file has a recognizable file extension indicating that it is compressed, and a local binary
-    /// to perform decompression is found, decompression will occur automagically.
+    /// to perform decompression is found, decompression will occur automagically. This requires with `-z`.
     input: Vec<PathBuf>,
 
     /// Output file to write to, defaults to stdout
@@ -337,13 +342,14 @@ struct Opts {
     /// Treat the header_fields as string literals instead of regex's
     #[structopt(short = "L", long)]
     literal: bool,
+
+    /// Try to find the correct decompression method based on the file extensions
+    #[structopt(short = "z", long)]
+    try_decompress: bool,
 }
 
 fn main() -> Result<()> {
-    // TODO: add the complement argument to flip the FieldRange
-    // TODO: move the decompression behind the `-z` flag like ripgrep
-    // TODO: benchmark in string literal mode
-
+    // TODO: add the complement argument to flip the FieldRange / excludes
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
     // https://eklitzke.org/efficient-file-copying-on-linux
@@ -352,12 +358,15 @@ fn main() -> Result<()> {
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
     } else {
-        opts.input.iter().map(select_input).collect()
+        opts.input
+            .iter()
+            .map(|p| select_input(p, opts.try_decompress))
+            .collect()
     };
 
     for r in readers {
         let r = r?;
-        let mut reader = BufReader::new(r);
+        let mut reader = BufReader::with_capacity(0x20000, r);
         if let Err(err) = run(&mut reader, &mut writer, &opts) {
             if is_broken_pipe(&err) {
                 exit(0)
@@ -455,7 +464,10 @@ fn run<R: Read, W: Write>(
             for _ in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
-                        staging[pos].push(part);
+                        // Guaranteed to be in range since staging is created based on field pos anyways
+                        if let Some(staged_range) = staging.get_mut(pos) {
+                            staged_range.push(part)
+                        }
                     }
                     None => break,
                 }
@@ -584,6 +596,7 @@ mod test {
             fields: Some(fields.to_owned()),
             header_fields: None,
             literal: false,
+            try_decompress: false,
         }
     }
 

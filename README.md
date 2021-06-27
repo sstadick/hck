@@ -40,19 +40,35 @@ wget ...
 
 ## Examples
 
-TODO: maybe use ps aux for all these
-
 ### Splitting with a regex delimiter
+
+```bash
+ps aux | hck -d'\s+' -f1-3,5-
+```
 
 ### Reordering output columns
 
+```bash
+ps aux | hck -d'\s+' -f2,1,3-
+```
+
 ### Changing the output record separator
+
+```bash
+ps aux | hck -d'\s+' -D'___' -f2,1,3-
+```
 
 ### Select columns with regex
 
-TODO: Use `ps aux` as example of weirdly spaced thing you may want to parse as tabular
+```bash
+hck -F 'is_new.*` -F'^[^_]' ./headered_data.tsv
+```
 
 ### Automagic decompresion
+
+```bash
+hck -f1,3- -z ~/Downloads/massive.tsv.gz | rg 'cool_data'
+```
 
 ## Benchmarks
 
@@ -116,6 +132,9 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 ## TODO
 
 - Add complement argument
+- Implement custom double buffered output like tsv-util to avoid ill timed flushes
+- Explore some king of sentinel values to unlock optimizations blocked by the `1-` field syntax
+- Explore offloading regex / splitting to another thread
 
 ## References
 

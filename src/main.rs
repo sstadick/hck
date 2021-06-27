@@ -266,7 +266,7 @@ fn is_broken_pipe(err: &Error) -> bool {
 /// Technically this can handle much more than just io errors, but the main use case is the
 /// writes inside the closure that is being coerced back to a specific type.
 #[inline]
-fn handle_io_error(result: Result<()>) {
+fn handle_io_error(result: Result<usize>) {
     if let Err(err) = result {
         if is_broken_pipe(&err) {
             exit(0);
@@ -341,9 +341,13 @@ struct Opts {
 
 fn main() -> Result<()> {
     // TODO: add the complement argument to flip the FieldRange
+    // TODO: move the decompression behind the `-z` flag like ripgrep
+    // TODO: benchmark in string literal mode
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
-    let mut writer = BufWriter::new(select_output(opts.output.as_ref())?);
+    // https://eklitzke.org/efficient-file-copying-on-linux
+    let mut writer = BufWriter::with_capacity(0x20000, select_output(opts.output.as_ref())?);
 
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
@@ -467,13 +471,16 @@ fn run<R: Read, W: Write>(
                 for value in values.drain(..) {
                     if print_delim {
                         handle_io_error(
-                            write!(writer, "{}", &opts.output_delimiter)
+                            writer
+                                .write(&opts.output_delimiter.as_bytes())
                                 .with_context(|| "Error writing output"),
                         );
                     }
                     print_delim = true;
                     handle_io_error(
-                        write!(writer, "{}", value).with_context(|| "Error writing output"),
+                        writer
+                            .write(value.as_bytes())
+                            .with_context(|| "Error writing output"),
                     );
                 }
                 values.into_iter().map(|_| "").collect()

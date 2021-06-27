@@ -18,15 +18,15 @@ hck -d, -f1- -D '   ' -o ./hyper_data_multichar.txt ./hyper_data.txt
 
 # Notes:
 #   - xsv gets messed up by the first commented line in the section, so tail skips it, the point is to run these commands as we would in the wild
-# hyperfine --warmup 3 -m 5 --export-markdown multi_char.md --show-output \
-#     "hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
-#     "hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
-#     "gawk -F' ' '{print \$1, \$8 \$19}' ./hyper_data_multichar.txt > /dev/null" \
-#     "gawk -F'   ' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \
-#     "gawk -F'[:space:]+' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \
-#     "< ./hyper_data_multichar.txt tr -s ' ' | gcut -d ' ' -f1,8,19 > /dev/null" \
-#     "< ./hyper_data_multichar.txt tr -s ' ' | tail -n+2 | xsv select -d ' ' 1,8,19 --no-headers > /dev/null"
-#     "< ./hyper_data_multichar.txt tr -s ' ' | tsv-select -d ' ' 1,8,19 > /dev/null"
+hyperfine --warmup 3 -m 5 --export-markdown multi_char.md --show-output \
+    "hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
+    "hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
+    "gawk -F' ' '{print \$1, \$8 \$19}' ./hyper_data_multichar.txt > /dev/null" \
+    "gawk -F'   ' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \
+    "gawk -F'[:space:]+' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \
+    "< ./hyper_data_multichar.txt tr -s ' ' | gcut -d ' ' -f1,8,19 > /dev/null" \
+    "< ./hyper_data_multichar.txt tr -s ' ' | tail -n+2 | xsv select -d ' ' 1,8,19 --no-headers > /dev/null"
+    "< ./hyper_data_multichar.txt tr -s ' ' | tsv-select -d ' ' 1,8,19 > /dev/null"
 
 
 # rm ./hyper_data.txt

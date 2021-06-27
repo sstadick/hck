@@ -135,6 +135,8 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Implement custom double buffered output like tsv-util to avoid ill timed flushes
 - Explore some king of sentinel values to unlock optimizations blocked by the `1-` field syntax
 - Explore offloading regex / splitting to another thread
+- Work out lifetime issue with reused staging area
+- Don't reparse fields / headers for each new file
 
 ## References
 

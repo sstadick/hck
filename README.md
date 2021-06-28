@@ -138,6 +138,13 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Work out lifetime issue with reused staging area
 - Don't reparse fields / headers for each new file
 
+
+- Create a "processor" struct that processes lines, and has the "staging" buffer on it, that should clean up my lifetime issues and allow the compiler to optimize the write loop harder.
+- Create a double buffer that won't flush until after newlines.
+- read in bstr for_each_newline and pass unchecked str to regex new (but see just how bad tha borks on invalid utf8)
+- Profile harder to see where all the time is spent, move to linux for that, try running with `coz`.
+- Maybe go multi-core
+
 ## References
 
 - [rust-coreutils-cut](https://github.com/uutils/coreutils/blob/e48ff9dd9ee0d55da285f99d75f6169a5e4e7acc/src/uu/cut/src/cut.rs)

@@ -1,4 +1,10 @@
+extern crate static_assertions as sa;
+pub mod buffered_output;
 use anyhow::{Context, Error, Result};
+use buffered_output::{
+    BufferedOutput,
+    BufferedOutputDefaults::{FLUSH_SIZE, MAX_SIZE, RESERVE_SIZE},
+};
 use env_logger::Env;
 use grep_cli::{stdout, DecompressionReaderBuilder};
 use log::error;
@@ -354,6 +360,8 @@ fn main() -> Result<()> {
     let opts = Opts::from_args();
     // https://eklitzke.org/efficient-file-copying-on-linux
     let mut writer = BufWriter::with_capacity(0x20000, select_output(opts.output.as_ref())?);
+    // let writer = select_output(opts.output.as_ref())?;
+    // let mut writer = BufferedOutput::new(writer, FLUSH_SIZE, RESERVE_SIZE, MAX_SIZE);
 
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
@@ -374,6 +382,36 @@ fn main() -> Result<()> {
             error!("{}", err);
             exit(1)
         }
+    }
+    Ok(())
+}
+
+fn reuse_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
+    assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<U>());
+    assert_eq!(std::mem::align_of::<T>(), std::mem::align_of::<U>());
+    v.clear();
+    v.into_iter().map(|_| unreachable!()).collect()
+}
+
+fn reuse_cache<T, U>(cache: Vec<Vec<T>>) -> Vec<Vec<U>> {
+    assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<U>());
+    assert_eq!(std::mem::align_of::<T>(), std::mem::align_of::<U>());
+    cache.into_iter().map(|c| reuse_vec(c)).collect()
+}
+
+#[inline]
+fn join_appender<'a, W: Write>(
+    writer: &mut W,
+    mut items: impl Iterator<Item = &'a str>,
+    delim: &str,
+) -> Result<()> {
+    if let Some(item) = items.next() {
+        writer.write_all(item.as_bytes())?;
+    }
+
+    for item in items {
+        writer.write_all(delim.as_bytes())?;
+        writer.write_all(item.as_bytes())?;
     }
     Ok(())
 }
@@ -445,8 +483,7 @@ fn run<R: Read, W: Write>(
         // Create a lazy splitter
         let mut parts = opts.delimiter.split(&buffer).peekable();
         let mut iterator_index = 0;
-        let mut print_delim = false;
-        let mut staging = staging_empty;
+        let mut staging: Vec<Vec<&str>> = staging_empty;
 
         // Iterate over our ranges and write any fields that are contained by them.
         for &FieldRange { low, high, pos } in &fields {
@@ -476,34 +513,21 @@ fn run<R: Read, W: Write>(
         }
 
         // Now write the values in the correct order
-        // The `collect` calls here should be happening in place resulting in no allocations.
-        staging_empty = staging
-            .into_iter()
-            .map(|mut values| {
-                for value in values.drain(..) {
-                    if print_delim {
-                        handle_io_error(
-                            writer
-                                .write(&opts.output_delimiter.as_bytes())
-                                .with_context(|| "Error writing output"),
-                        );
-                    }
-                    print_delim = true;
-                    handle_io_error(
-                        writer
-                            .write(value.as_bytes())
-                            .with_context(|| "Error writing output"),
-                    );
-                }
-                values.into_iter().map(|_| "").collect()
-            })
-            .collect();
+        join_appender(
+            writer,
+            staging.iter_mut().flat_map(|values| values.drain(..)),
+            &opts.output_delimiter,
+        )?;
 
         // Write endline
         writeln!(writer)?;
+        // writer.appendln(std::iter::empty());
+        staging_empty = unsafe {
+            // Safety: layout of types which only differ in lifetimes is the same
+            ::core::mem::transmute(staging)
+        };
         buffer.clear();
     }
-
     writer.flush()?;
     Ok(())
 }
@@ -511,6 +535,7 @@ fn run<R: Read, W: Write>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use bstr::io::BufReadExt;
     use tempfile::TempDir;
 
     #[test]
@@ -604,13 +629,12 @@ mod test {
     fn read_tsv(path: impl AsRef<Path>) -> Vec<Vec<String>> {
         let reader = BufReader::new(File::open(path).unwrap());
         let mut result = vec![];
-        for line in reader.lines() {
-            let line = line.unwrap();
-            result.push(
-                line.split('\t')
-                    .map(|s| s.to_owned())
-                    .collect::<Vec<String>>(),
-            )
+        let r = Regex::new(r"\s+").unwrap();
+
+        for line in reader.byte_lines() {
+            let line = &line.unwrap();
+            let line = unsafe { std::str::from_utf8_unchecked(line) };
+            result.push(r.split(line).map(|s| s.to_owned()).collect());
         }
         result
     }
@@ -628,6 +652,7 @@ mod test {
     fn run_wrapper<P: AsRef<Path>>(input: P, output: P, opts: &Opts) {
         let mut reader = BufReader::new(File::open(input).unwrap());
         let mut writer = BufWriter::new(File::create(output).unwrap());
+        // let mut writer = BufferedOutput::new(writer, FLUSH_SIZE, RESERVE_SIZE, MAX_SIZE);
         run(&mut reader, &mut writer, opts).unwrap();
     }
 
@@ -663,6 +688,19 @@ mod test {
         let filtered = read_tsv(output_file);
 
         assert_eq!(filtered, vec![vec!["a", "c"], vec!["1", "3"]]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_read_several_single_values_with_invalid_utf8() {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts(&input_file, &output_file, "1,3");
+        let bad_str = unsafe { String::from_utf8_unchecked(b"a\xED\xA0\x80z".to_vec()) };
+        let data = vec![vec![bad_str.as_str(), "b", "c"], vec!["1", "2", "3"]];
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts)
     }
 
     #[test]

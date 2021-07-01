@@ -28,15 +28,10 @@ It is meant to be simple and easy to use while exploring datasets.
 With the Rust toolchain:
 
 ```bash
-# Note, you may have to specify the version with the beta releases
 cargo install hck
 ```
 
-From the releases page:
-
-```bash
-wget ...
-```
+From the [releases page](https://github.com/sstadick/hck/releases)
 
 ## Examples
 

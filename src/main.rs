@@ -31,7 +31,7 @@ pub mod built_info {
             format!("{}-{}", PKG_VERSION, s[0..8].to_owned())
         } else {
             // This shouldn't happen
-            format!("No-git-info-found:CargoPkgVersion{}", PKG_VERSION)
+            format!({}", PKG_VERSION)
         };
         let suffix = match GIT_DIRTY {
             Some(true) => "-dirty",

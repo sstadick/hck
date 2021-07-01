@@ -11,14 +11,34 @@ readme = "README.md"
 categories = ["text-processing", "command-line-interface"]
 keywords = ["text", "cli"]
 
+[lib]
+name = "hcklib"
+path = "src/lib/mod.rs"
+
+[[bin]]
+name = "hck"
+path = "src/main.rs"
+
 [profile.release]
-lto = true
+lto = "fat"
 codegen-units = 1
 
 [dependencies]
+anyhow = "1.0.41"
+bstr = "0.2.16"
+crossbeam = "0.8.0"
+env = "0.0.0"
+env_logger = "0.8.4"
+grep-cli = "0.1.6"
+lazy_static = "1.4.0"
+log = "0.4.14"
 regex = "1.5.4"
-structopt = "0.3.21"
+structopt = {version = "0.3.21", features = ["default"]}
+termcolor = "1.1.2"
 thiserror = "1.0.25"
 
 [dev-dependencies]
 tempfile = "3.2.0"
+
+[build-dependencies]
+built = {version ="0.5.1", features = ["git2"]}

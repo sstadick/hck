@@ -26,7 +26,6 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.41"
 bstr = "0.2.16"
-crossbeam = "0.8.0"
 env = "0.0.0"
 env_logger = "0.8.4"
 grep-cli = "0.1.6"

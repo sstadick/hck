@@ -1,28 +1,37 @@
 use bstr::ByteSlice;
 
-use crate::field_range::FieldRange;
+use crate::{field_range::FieldRange, line_parser::LineParser};
 use regex::bytes::Regex;
 use std::io::{self, BufRead, BufReader, Read, Write};
 
 /// The main processing loop
-pub struct Core<'a, W>
+pub struct Core<'a, W, P>
 where
     W: Write,
+    P: LineParser,
 {
     writer: &'a mut W,
     output_delimiter: &'a [u8],
     fields: &'a [FieldRange],
+    line_parser: P,
 }
 
-impl<'a, W> Core<'a, W>
+impl<'a, W, P> Core<'a, W, P>
 where
     W: Write,
+    P: LineParser,
 {
-    pub fn new(writer: &'a mut W, output_delimiter: &'a [u8], fields: &'a [FieldRange]) -> Self {
+    pub fn new(
+        writer: &'a mut W,
+        output_delimiter: &'a [u8],
+        fields: &'a [FieldRange],
+        line_parser: P,
+    ) -> Self {
         Self {
             writer,
             output_delimiter,
             fields,
+            line_parser,
         }
     }
 
@@ -41,6 +50,59 @@ where
             self.writer.write_all(item)?;
         }
         self.writer.write_all(&[b'\n'])?;
+        Ok(())
+    }
+
+    pub fn process_reader<R>(&mut self, reader: R) -> Result<(), io::Error>
+    where
+        R: Read,
+    {
+        let mut reader = BufReader::new(reader);
+        let mut empty_shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+
+        let mut bytes = vec![];
+        let mut consumed = 0;
+
+        loop {
+            // Process the buffer
+            {
+                let mut buf = reader.fill_buf()?;
+                while let Some(index) = buf.find_byte(b'\n') {
+                    let mut shuffler = empty_shuffler;
+                    let (record, rest) = buf.split_at(index + 1);
+                    buf = rest;
+                    consumed += record.len();
+                    self.line_parser
+                        .parse_line(&record[..record.len() - 1], &mut shuffler);
+                    // Now write the values in the correct order
+                    self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
+                    empty_shuffler = unsafe { core::mem::transmute(shuffler) };
+                }
+                bytes.extend_from_slice(&buf);
+                consumed += buf.len();
+            }
+
+            // Get next buffer
+            let mut shuffler = empty_shuffler;
+            reader.consume(consumed);
+            consumed = 0;
+            reader.read_until(b'\n', &mut bytes)?;
+            if bytes.is_empty() {
+                break;
+            }
+            // Do stuff with record - new scope so that parts are dropped before bytes are cleared
+            {
+                self.line_parser
+                    .parse_line(&bytes[..bytes.len() - 1], &mut shuffler);
+                // Now write the values in the correct order
+                self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
+            }
+            empty_shuffler = unsafe { core::mem::transmute(shuffler) };
+            bytes.clear();
+        }
+        reader.consume(consumed);
+        // TODO: Could maybe defer this?
+        self.writer.flush()?;
         Ok(())
     }
 

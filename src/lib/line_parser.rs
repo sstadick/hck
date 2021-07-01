@@ -5,15 +5,9 @@ use bstr::ByteSlice;
 use regex::bytes::Regex;
 
 ///
-pub trait LineParser<'linebytes>
-where
-    Self::Splitterator: Iterator<Item = &'linebytes [u8]>,
-{
-    /// The iterator returned by `split`.
-    type Splitterator;
-
+pub trait LineParser {
     /// Fills the shuffler with values parsed from the line.
-    fn parse_line(&self, line: &'linebytes [u8], shuffler: &mut Vec<Vec<&'linebytes [u8]>>) {
+    fn parse_line(&self, line: &[u8], shuffler: &mut Vec<Vec<&[u8]>>) {
         let mut parts = self.split(line);
         let mut iterator_index = 0;
 
@@ -49,7 +43,9 @@ where
     fn fields(&self) -> &[FieldRange];
 
     /// Return an iterator of elements resulting from splitting the line.
-    fn split(&self, line: &'linebytes [u8]) -> Self::Splitterator;
+    fn split<'l, I>(&self, line: &[u8]) -> I
+    where
+        I: Iterator<Item = &'l [u8]>;
 }
 
 /// A line parser that works on fixed substrings
@@ -58,11 +54,7 @@ pub struct SubStrLineParser<'a> {
     delimiter: &'a [u8],
 }
 
-impl<'a, 'linebytes> LineParser<'linebytes> for SubStrLineParser<'a>
-where
-    'a: 'linebytes,
-{
-    type Splitterator = Peekable<bstr::Split<'linebytes>>;
+impl<'a> LineParser for SubStrLineParser<'a> {
     /// Get the field ranges associated with this splitter
     #[inline]
     fn fields(&self) -> &[FieldRange] {
@@ -71,7 +63,10 @@ where
 
     /// Split the line
     #[inline]
-    fn split(&self, line: &'linebytes [u8]) -> Self::Splitterator {
+    fn split<'l, I>(&self, line: &'l [u8]) -> I
+    where
+        I: Iterator<Item = &'l [u8]>,
+    {
         line.split_str(self.delimiter).peekable()
     }
 }
@@ -82,11 +77,7 @@ pub struct RegexLineParser<'a> {
     regex: &'a Regex,
 }
 
-impl<'a, 'linebytes> LineParser<'linebytes> for RegexLineParser<'a>
-where
-    'a: 'linebytes,
-{
-    type Splitterator = Peekable<regex::bytes::Split<'a, 'linebytes>>;
+impl<'a> LineParser for RegexLineParser<'a> {
     /// Get the ranges associated with this splitter
     #[inline]
     fn fields(&self) -> &[FieldRange] {
@@ -95,7 +86,10 @@ where
 
     /// Split the line
     #[inline]
-    fn split(&self, line: &'linebytes [u8]) -> Self::Splitterator {
+    fn split<'l, I>(&self, line: &'l [u8]) -> I
+    where
+        I: Iterator<Item = &'l [u8]>,
+    {
         self.regex.split(line).peekable()
     }
 }

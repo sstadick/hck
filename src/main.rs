@@ -31,7 +31,7 @@ pub mod built_info {
             format!("{}-{}", PKG_VERSION, s[0..8].to_owned())
         } else {
             // This shouldn't happen
-            format!({}", PKG_VERSION)
+            PKG_VERSION.to_string()
         };
         let suffix = match GIT_DIRTY {
             Some(true) => "-dirty",

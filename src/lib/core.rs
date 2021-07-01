@@ -31,7 +31,7 @@ where
         }
     }
 
-    /// Write a lines worth of items, properly delimited and with a newline.
+    // Write a lines worth of items, properly delimited and with a newline.
     #[inline]
     fn join_appender<'b>(
         &mut self,

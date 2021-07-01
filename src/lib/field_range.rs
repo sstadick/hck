@@ -23,7 +23,7 @@ pub enum FieldError {
 }
 
 pub enum RegexOrStr<'b> {
-    Regex(&'b Regex),
+    Regex(Regex),
     Str(&'b str),
 }
 
@@ -139,13 +139,13 @@ impl FieldRange {
     pub fn from_header_list(
         list: &[Regex],
         header: &[u8],
-        delim: RegexOrStr,
-        literal: bool,
+        delim: &RegexOrStr,
+        header_is_regex: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];
         for (i, header) in delim.split(header).enumerate() {
             for (j, regex) in list.iter().enumerate() {
-                if literal {
+                if !header_is_regex {
                     if regex.as_str().as_bytes() == header {
                         ranges.push(FieldRange {
                             low: i,
@@ -219,13 +219,13 @@ mod test {
     fn test_parse_header_fields() {
         let header = b"is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
-        let delim = RegexOrStr::Regex(&delim);
+        let delim = RegexOrStr::Regex(delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, delim, false).unwrap();
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim, true).unwrap();
         assert_eq!(
             vec![
                 FieldRange {
@@ -247,14 +247,14 @@ mod test {
     fn test_parse_header_fields_literal() {
         let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
-        let delim = RegexOrStr::Regex(&delim);
+        let delim = RegexOrStr::Regex(delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
             Regex::new(r"is").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, delim, true).unwrap();
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
         assert_eq!(
             vec![FieldRange {
                 low: 1,

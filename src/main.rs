@@ -1,17 +1,13 @@
-use anyhow::{Context, Error, Result};
-use bstr::{io::BufReadExt, ByteSlice};
-use bumpalo::{collections::Vec as BVec, Bump};
+use anyhow::{Context, Error, Result, anyhow};
+use bstr::ByteSlice;
 use env_logger::Env;
 use grep_cli::{stdout, DecompressionReaderBuilder};
-use hcklib::field_range::FieldRange;
-use linereader::LineReader;
+use hcklib::{core::Core, field_range::FieldRange};
 use log::error;
-use object_pool::Pool;
 use regex::bytes::Regex;
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader, BufWriter, Read, Write},
-    iter::Peekable,
+    io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     process::exit,
 };
@@ -101,21 +97,6 @@ fn is_broken_pipe(err: &Error) -> bool {
     false
 }
 
-/// Handle io errors in awkward spots.
-///
-/// Technically this can handle much more than just io errors, but the main use case is the
-/// writes inside the closure that is being coerced back to a specific type.
-#[inline]
-fn handle_io_error(result: Result<usize>) {
-    if let Err(err) = result {
-        if is_broken_pipe(&err) {
-            exit(0);
-        }
-        error!("{}", err);
-        exit(1)
-    }
-}
-
 /// Select and reorder columns.
 ///
 /// This tool behaves like unix `cut` with a few exceptions:
@@ -189,13 +170,11 @@ struct Opts {
 
 fn main() -> Result<()> {
     // TODO: add the complement argument to flip the FieldRange / excludes
+    // TODO: parameterize newline
+    // TODO: clean up regex on / off flags
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
-    // https://eklitzke.org/efficient-file-copying-on-linux
     let mut writer = select_output(opts.output.as_ref())?;
-    // let mut writer = BufWriter::with_capacity(0x20000, select_output(opts.output.as_ref())?);
-    // let writer = select_output(opts.output.as_ref())?;
-    // let mut writer = BufferedOutput::new(writer, FLUSH_SIZE, RESERVE_SIZE, MAX_SIZE);
 
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
@@ -208,7 +187,6 @@ fn main() -> Result<()> {
 
     for r in readers {
         let mut r = r?;
-        // let mut reader = BufReader::with_capacity(0x20000, r);
         if let Err(err) = run(&mut r, &mut writer, &opts) {
             if is_broken_pipe(&err) {
                 exit(0)
@@ -220,122 +198,34 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn reuse_vec<T, U>(mut v: Vec<T>) -> Vec<U> {
-    assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<U>());
-    assert_eq!(std::mem::align_of::<T>(), std::mem::align_of::<U>());
-    v.clear();
-    v.into_iter().map(|_| unreachable!()).collect()
-}
-
-fn reuse_cache<T, U>(cache: Vec<Vec<T>>) -> Vec<Vec<U>> {
-    assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<U>());
-    assert_eq!(std::mem::align_of::<T>(), std::mem::align_of::<U>());
-    cache.into_iter().map(|c| reuse_vec(c)).collect()
-}
-
-#[inline]
-fn splitter<'b>(
-    bytes: &'b [u8],
-    str_delim: &'b [u8],
-    maybe_regex: Option<&'b Regex>,
-) -> Box<dyn Iterator<Item = &'b [u8]> + 'b> {
-    if let Some(r) = maybe_regex {
-        Box::new(r.split(bytes).map(|s| s.as_bytes()).peekable())
-    } else {
-        Box::new(bytes.split_str(str_delim).peekable())
-    }
-}
-
-#[inline]
-fn join_appender<'a, W: Write>(
-    writer: &mut W,
-    mut items: impl Iterator<Item = &'a [u8]>,
-    delim: &str,
-) -> Result<()> {
-    if let Some(item) = items.next() {
-        writer.write_all(item.as_bytes())?;
-    }
-
-    for item in items {
-        writer.write_all(delim.as_bytes())?;
-        writer.write_all(item.as_bytes())?;
-    }
-    writer.write_all(&[b'\n'])?;
-    Ok(())
-}
-
-#[inline]
-fn parse_line<'a>(
-    bytes: &'a [u8],
-    cache: &mut Vec<Vec<&'a [u8]>>,
-    opts: &'a Opts,
-    regex: &'a Option<Regex>,
-    fields: &'a [FieldRange],
-) -> Result<()> {
-    // Create a lazy splitter
-    let mut parts = splitter(bytes, &opts.delimiter.as_bytes(), regex.as_ref());
-    let mut iterator_index = 0;
-
-    // Iterate over our ranges and write any fields that are contained by them.
-    for &FieldRange { low, high, pos } in fields {
-        // Advance up to low end of range
-        if low > iterator_index {
-            match parts.nth(low - iterator_index - 1) {
-                Some(_part) => {
-                    iterator_index = low;
-                }
-                None => break,
-            }
-        }
-
-        // Advance through the range
-        for _ in 0..=high - low {
-            match parts.next() {
-                Some(part) => {
-                    // Guaranteed to be in range since staging is created based on field pos anyways
-                    if let Some(reshuffled_range) = cache.get_mut(pos) {
-                        reshuffled_range.push(part)
-                    }
-                }
-                None => break,
-            }
-            iterator_index += 1;
-        }
-    }
-    Ok(())
-}
-
 /// Run the actual parsing and writing
 fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result<()> {
-    let mut buffer = String::new();
     let mut skip_first_read = false;
     let mut writer = BufWriter::with_capacity(0x20000, writer);
     let mut reader = BufReader::with_capacity(0x20000, reader);
+    let first_line = reader.buffer().find_byte(b'\n').ok_or(Err(anyhow!("Could not find first line."))).unwrap();
 
     let fields = match (&opts.fields, &opts.header_fields) {
         (Some(field_list), Some(header_fields)) => {
-            todo!()
-            // reader.read_line(&mut buffer)?;
-            // buffer.pop(); // remove newline
-            // skip_first_read = true;
-            // let mut fields = FieldRange::from_list(field_list)?;
-            // let header_fields = FieldRange::from_header_list(
-            //     header_fields,
-            //     &buffer.as_bytes(),
-            //     &opts.delimiter,
-            //     opts.literal,
-            // )?;
-            // fields.extend(header_fields.into_iter());
-            // FieldRange::post_process_ranges(&mut fields);
-            // fields
+            skip_first_read = true;
+            let mut fields = FieldRange::from_list(field_list)?;
+            let header_fields = FieldRange::from_header_list(
+                header_fields,
+                &reader.buffer()[..first_line - 1],
+                &opts.delimiter,
+                opts.literal,
+            )?;
+            fields.extend(header_fields.into_iter());
+            FieldRange::post_process_ranges(&mut fields);
+            fields
         }
         (Some(field_list), None) => FieldRange::from_list(field_list)?,
         (None, Some(header_fields)) => {
             unreachable!()
-            // reader.read_line(&mut buffer)?;
-            // buffer.pop(); // remove newline
-            // skip_first_read = true;
-            // FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
+            reader.read_line(&mut buffer)?;
+            buffer.pop(); // remove newline
+            skip_first_read = true;
+            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
         }
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
@@ -343,148 +233,14 @@ fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result
         }
     };
 
-    let regex = if opts.delim_is_regex {
-        Some(Regex::new(&opts.delimiter)?)
+    let mut core = Core::new(&mut writer, &opts.output_delimiter.as_bytes(), &fields);
+
+    if opts.delim_is_regex {
+        let regex = Regex::new(&opts.delimiter)?;
+        core.process_reader_regex(&mut reader, &regex)?;
     } else {
-        None
-    };
-    let mut empty_cache: Vec<Vec<&'static [u8]>> = vec![vec![]; fields.len()];
-
-    let mut bytes = vec![];
-    let mut consumed = 0;
-    loop {
-        // Process the buffer
-        {
-            let mut buf = reader.fill_buf()?;
-            while let Some(index) = buf.find_byte(b'\n') {
-                let mut cache = empty_cache;
-                let (record, rest) = buf.split_at(index + 1);
-                buf = rest;
-                consumed += record.len();
-                parse_line(
-                    &record[..record.len() - 1],
-                    &mut cache,
-                    &opts,
-                    &regex,
-                    &fields,
-                );
-                // Now write the values in the correct order
-                join_appender(
-                    &mut writer,
-                    cache.iter_mut().flat_map(|values| values.drain(..)),
-                    &opts.output_delimiter,
-                )?;
-                empty_cache = unsafe { core::mem::transmute(cache) };
-            }
-            bytes.extend_from_slice(&buf);
-            consumed += buf.len();
-        }
-
-        // Get next buffer
-        let mut cache = empty_cache;
-        reader.consume(consumed);
-        consumed = 0;
-        reader.read_until(b'\n', &mut bytes)?;
-        if bytes.is_empty() {
-            break;
-        }
-        // Do stuff with record - new scope so that parts are dropped before bytes are cleared
-        {
-            parse_line(
-                &bytes[..bytes.len() - 1],
-                &mut cache,
-                &opts,
-                &regex,
-                &fields,
-            );
-            // Now write the values in the correct order
-            join_appender(
-                &mut writer,
-                cache.iter_mut().flat_map(|values| values.drain(..)),
-                &opts.output_delimiter,
-            )?;
-        }
-        empty_cache = unsafe { core::mem::transmute(cache) };
-        bytes.clear();
+        core.process_reader_substr(&mut reader, &opts.delimiter.as_bytes())?;
     }
-    reader.consume(consumed);
-    writer.flush()?;
-
-    // This vec is reused with each pass of the loop. It holds a vec for each FieldRange. Values
-    // are pushed onto each FieldRange's vec and then printed at the end of the loop. This allows
-    // values to be printed in the order specified by the user since a FieldRange will be push values
-    // onto the index indicated by FieldRange.pos.
-    //
-    // Below, we are creating a new variable in the loop, `staging`, to coerce the `str`'s lifetime
-    // to a short lifetime consistent with the lifetime of the loop. Then, after draining the values
-    // from the inner vecs we are turning `staging_empty` back into `Vec<Vec<&'static>>`, again by
-    // coercion. In theory this should all be zero cost due to
-    // [InPlaceIterable](https://doc.rust-lang.org/std/iter/trait.InPlaceIterable.html). Godbolt proves
-    // this is so as well. See links in the linked rust-lang thread.
-    //
-    // See also https://users.rust-lang.org/t/review-of-unsafe-usage/61520
-    // let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
-    // loop {
-    //     // If we read the header line then use existing buffer.
-    //     if skip_first_read {
-    //         skip_first_read = false;
-    //     } else {
-    //         if reader.read_line(&mut buffer)? == 0 {
-    //             break;
-    //         }
-    //         // pop the newline off the string
-    //         buffer.pop();
-    //     }
-
-    //     // Create a lazy splitter
-    //     let mut parts = opts.delimiter.split(&buffer).peekable();
-    //     let mut iterator_index = 0;
-    //     let mut staging: Vec<Vec<&str>> = staging_empty;
-
-    //     // Iterate over our ranges and write any fields that are contained by them.
-    //     for &FieldRange { low, high, pos } in &fields {
-    //         // Advance up to low end of range
-    //         if low > iterator_index {
-    //             match parts.nth(low - iterator_index - 1) {
-    //                 Some(_part) => {
-    //                     iterator_index = low;
-    //                 }
-    //                 None => break,
-    //             }
-    //         }
-
-    //         // Advance through the range
-    //         for _ in 0..=high - low {
-    //             match parts.next() {
-    //                 Some(part) => {
-    //                     // Guaranteed to be in range since staging is created based on field pos anyways
-    //                     if let Some(staged_range) = staging.get_mut(pos) {
-    //                         staged_range.push(part)
-    //                     }
-    //                 }
-    //                 None => break,
-    //             }
-    //             iterator_index += 1;
-    //         }
-    //     }
-
-    //     // Now write the values in the correct order
-    //     join_appender(
-    //         writer,
-    //         staging.iter_mut().flat_map(|values| values.drain(..)),
-    //         &opts.output_delimiter,
-    //     )?;
-
-    //     // Write endline
-    //     writeln!(writer)?;
-    //     // writer.appendln(std::iter::empty());
-    //     staging_empty = unsafe {
-    //         // Safety: layout of types which only differ in lifetimes is the same
-    //         ::core::mem::transmute(staging)
-    //     };
-    //     buffer.clear();
-    // }
-    // writer.flush()?;
     Ok(())
 }
 

@@ -43,7 +43,7 @@ pub trait LineParser {
     fn fields(&self) -> &[FieldRange];
 
     /// Return an iterator of elements resulting from splitting the line.
-    fn split<'l, I>(&self, line: &[u8]) -> I
+    fn split<'l, I>(&self, line: &'l [u8]) -> I
     where
         I: Iterator<Item = &'l [u8]>;
 }

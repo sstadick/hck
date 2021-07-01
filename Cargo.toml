@@ -27,16 +27,12 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.41"
 bstr = "0.2.16"
-bumpalo = { version = "3.6.1", features = ["collections"]}
 crossbeam = "0.8.0"
 env = "0.0.0"
 env_logger = "0.8.4"
 grep-cli = "0.1.6"
 lazy_static = "1.4.0"
-linereader = "0.4.0"
 log = "0.4.14"
-object-pool = "0.5.4"
-ouroboros = "0.9.2"
 regex = "1.5.4"
 structopt = {version = "0.3.21", features = ["default"]}
 termcolor = "1.1.2"

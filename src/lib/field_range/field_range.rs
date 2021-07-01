@@ -4,6 +4,7 @@
 //!
 //! TODO
 
+use bstr::ByteSlice;
 use regex::bytes::Regex;
 use std::{cmp::max, str::FromStr};
 use thiserror::Error;
@@ -20,6 +21,20 @@ pub enum FieldError {
     #[error("No headers matched")]
     NoHeadersMatched,
 }
+
+pub enum RegexOrStr<'a> {
+    Regex(&'a Regex),
+    Str(&'a str),
+}
+
+// impl<'a> RegexOrStr<'a> {
+//     fn split<'b>(&self, line: &[u8]) -> Box<dyn Iterator<Item = &[u8]>> {
+//         match self {
+//             RegexOrStr::Regex(r) => Box::new(r.split(line)),
+//             RegexOrStr::Str(s) => Box::new(line.split_str(s)),
+//         }
+//     }
+// }
 
 /// Represent a range of columns to keep.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -124,7 +139,7 @@ impl FieldRange {
     pub fn from_header_list(
         list: &[Regex],
         header: &[u8],
-        delim: &Regex,
+        delim: &str,
         literal: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];

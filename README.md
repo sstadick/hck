@@ -145,6 +145,12 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Profile harder to see where all the time is spent, move to linux for that, try running with `coz`.
 - Maybe go multi-core
 
+- implement chunk reader the creates a chunk of lines - done, copy from file to LineReader Buffer, then from lineReader buffer to Chunk buffer
+- implement a chunk processor to produces sets of OrderedColumns - No copy, send the chunk with the OrderedColumns
+  - Maybe rayon in side of this thread to process a chunk since that is the most expensive part?
+  - look at bstr lines to process a chunk of lines
+- implement a chunk writer that writes OrderedColumns in sensibly large batch and makes use of the appender - 1 copy from ordered columns to write buffer, drop Chunk
+
 ## References
 
 - [rust-coreutils-cut](https://github.com/uutils/coreutils/blob/e48ff9dd9ee0d55da285f99d75f6169a5e4e7acc/src/uu/cut/src/cut.rs)

@@ -1,25 +1,22 @@
-extern crate static_assertions as sa;
-pub mod buffered_output;
 use anyhow::{Context, Error, Result};
-use buffered_output::{
-    BufferedOutput,
-    BufferedOutputDefaults::{FLUSH_SIZE, MAX_SIZE, RESERVE_SIZE},
-};
+use bstr::{io::BufReadExt, ByteSlice};
+use bumpalo::{collections::Vec as BVec, Bump};
 use env_logger::Env;
 use grep_cli::{stdout, DecompressionReaderBuilder};
+use hcklib::field_range::FieldRange;
+use linereader::LineReader;
 use log::error;
-use regex::Regex;
+use object_pool::Pool;
+use regex::bytes::Regex;
 use std::{
-    cmp::max,
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
+    iter::Peekable,
     path::{Path, PathBuf},
     process::exit,
-    str::FromStr,
 };
 use structopt::{clap::AppSettings::ColoredHelp, StructOpt};
 use termcolor::ColorChoice;
-use thiserror::Error;
 
 pub mod built_info {
     use structopt::lazy_static::lazy_static;
@@ -49,174 +46,6 @@ pub mod built_info {
         pub static ref VERSION: String = get_software_version();
     }
 }
-
-/// Errors for parsing / validating [`FieldRange`] strings.
-#[derive(Error, Debug)]
-enum FieldError {
-    #[error("Fields and positions are numbered from 1: {0}")]
-    InvalidField(usize),
-    #[error("High end of range less than low end of range: {0}-{1}")]
-    InvalidOrder(usize, usize),
-    #[error("Failed to parse field: {0}")]
-    FailedParse(String),
-    #[error("No headers matched")]
-    NoHeadersMatched,
-}
-
-/// Represent a range of columns to keep.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct FieldRange {
-    low: usize,
-    high: usize,
-    // The initial position of this range in the user input
-    pos: usize,
-}
-
-impl FromStr for FieldRange {
-    type Err = FieldError;
-
-    /// Convert a [`str`] into a [`FieldRange`]
-    fn from_str(s: &str) -> Result<FieldRange, FieldError> {
-        const MAX: usize = usize::MAX;
-
-        let mut parts = s.splitn(2, '-');
-
-        match (parts.next(), parts.next()) {
-            (Some(nm), None) => {
-                if let Ok(nm) = nm.parse::<usize>() {
-                    if nm > 0 {
-                        Ok(FieldRange {
-                            low: nm - 1,
-                            high: nm - 1,
-                            pos: 0,
-                        })
-                    } else {
-                        Err(FieldError::InvalidField(nm))
-                    }
-                } else {
-                    Err(FieldError::FailedParse(nm.to_owned()))
-                }
-            }
-            (Some(n), Some(m)) if m.is_empty() => {
-                if let Ok(low) = n.parse::<usize>() {
-                    if low > 0 {
-                        Ok(FieldRange {
-                            low: low - 1,
-                            high: MAX - 1,
-                            pos: 0,
-                        })
-                    } else {
-                        Err(FieldError::InvalidField(low))
-                    }
-                } else {
-                    Err(FieldError::FailedParse(n.to_owned()))
-                }
-            }
-            (Some(n), Some(m)) if n.is_empty() => {
-                if let Ok(high) = m.parse::<usize>() {
-                    if high > 0 {
-                        Ok(FieldRange {
-                            low: 0,
-                            high: high - 1,
-                            pos: 0,
-                        })
-                    } else {
-                        Err(FieldError::InvalidField(high))
-                    }
-                } else {
-                    Err(FieldError::FailedParse(m.to_owned()))
-                }
-            }
-            (Some(n), Some(m)) => match (n.parse::<usize>(), m.parse::<usize>()) {
-                (Ok(low), Ok(high)) => {
-                    if low > 0 && low <= high {
-                        Ok(FieldRange {
-                            low: low - 1,
-                            high: high - 1,
-                            pos: 0,
-                        })
-                    } else if low == 0 {
-                        Err(FieldError::InvalidField(low))
-                    } else {
-                        Err(FieldError::InvalidOrder(low, high))
-                    }
-                }
-                _ => Err(FieldError::FailedParse(format!("{}-{}", n, m))),
-            },
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl FieldRange {
-    /// Parse a comma separated list of fields and merge any overlaps
-    pub fn from_list(list: &str) -> Result<Vec<FieldRange>, FieldError> {
-        let mut ranges: Vec<FieldRange> = vec![];
-        for (i, item) in list.split(',').enumerate() {
-            let mut rnge: FieldRange = FromStr::from_str(item)?;
-            rnge.pos = i;
-            ranges.push(rnge);
-        }
-        FieldRange::post_process_ranges(&mut ranges);
-
-        Ok(ranges)
-    }
-
-    /// Get the indices of the headers that match any of the provided regex's.
-    pub fn from_header_list(
-        list: &[Regex],
-        header: &str,
-        delim: &Regex,
-        literal: bool,
-    ) -> Result<Vec<FieldRange>, FieldError> {
-        let mut ranges = vec![];
-        for (i, header) in delim.split(header).enumerate() {
-            for (j, regex) in list.iter().enumerate() {
-                if literal {
-                    if regex.as_str() == header {
-                        ranges.push(FieldRange {
-                            low: i,
-                            high: i,
-                            pos: j,
-                        });
-                    }
-                } else if regex.is_match(header) {
-                    ranges.push(FieldRange {
-                        low: i,
-                        high: i,
-                        pos: j,
-                    });
-                }
-            }
-        }
-
-        if ranges.is_empty() {
-            return Err(FieldError::NoHeadersMatched);
-        }
-
-        FieldRange::post_process_ranges(&mut ranges);
-
-        Ok(ranges)
-    }
-
-    /// Sort and merge overlaps in a set of [`Vec<FieldRange>`].
-    fn post_process_ranges(ranges: &mut Vec<FieldRange>) {
-        ranges.sort();
-        // merge overlapping ranges
-        for i in 0..ranges.len() {
-            let j = i + 1;
-
-            while j < ranges.len()
-                && ranges[j].low <= ranges[i].high + 1
-                && (ranges[j].pos == ranges[i].pos || ranges[j].pos - 1 == ranges[i].pos)
-            {
-                let j_high = ranges.remove(j).high;
-                ranges[i].high = max(ranges[i].high, j_high);
-            }
-        }
-    }
-}
-
 /// Determine whether we should read from a file or stdin.
 fn select_input<P: AsRef<Path>>(path: P, try_decompress: bool) -> Result<Box<dyn Read>> {
     let reader: Box<dyn Read> =
@@ -329,9 +158,13 @@ struct Opts {
     #[structopt(short, long)]
     output: Option<PathBuf>,
 
-    /// Regex delimiter to use on input files
+    /// Delimiter to use on input files
     #[structopt(short, long, default_value = r"\t")]
-    delimiter: Regex,
+    delimiter: String,
+
+    /// Treat the delimiter as a regex
+    #[structopt(short = "R", long)]
+    delim_is_regex: bool,
 
     /// Delimiter string to use on outputs
     #[structopt(short = "D", long, default_value = "\t")]
@@ -359,7 +192,8 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
     // https://eklitzke.org/efficient-file-copying-on-linux
-    let mut writer = BufWriter::with_capacity(0x20000, select_output(opts.output.as_ref())?);
+    let mut writer = select_output(opts.output.as_ref())?;
+    // let mut writer = BufWriter::with_capacity(0x20000, select_output(opts.output.as_ref())?);
     // let writer = select_output(opts.output.as_ref())?;
     // let mut writer = BufferedOutput::new(writer, FLUSH_SIZE, RESERVE_SIZE, MAX_SIZE);
 
@@ -373,9 +207,9 @@ fn main() -> Result<()> {
     };
 
     for r in readers {
-        let r = r?;
-        let mut reader = BufReader::with_capacity(0x20000, r);
-        if let Err(err) = run(&mut reader, &mut writer, &opts) {
+        let mut r = r?;
+        // let mut reader = BufReader::with_capacity(0x20000, r);
+        if let Err(err) = run(&mut r, &mut writer, &opts) {
             if is_broken_pipe(&err) {
                 exit(0)
             }
@@ -400,9 +234,22 @@ fn reuse_cache<T, U>(cache: Vec<Vec<T>>) -> Vec<Vec<U>> {
 }
 
 #[inline]
+fn splitter<'b>(
+    bytes: &'b [u8],
+    str_delim: &'b [u8],
+    maybe_regex: Option<&'b Regex>,
+) -> Box<dyn Iterator<Item = &'b [u8]> + 'b> {
+    if let Some(r) = maybe_regex {
+        Box::new(r.split(bytes).map(|s| s.as_bytes()).peekable())
+    } else {
+        Box::new(bytes.split_str(str_delim).peekable())
+    }
+}
+
+#[inline]
 fn join_appender<'a, W: Write>(
     writer: &mut W,
-    mut items: impl Iterator<Item = &'a str>,
+    mut items: impl Iterator<Item = &'a [u8]>,
     delim: &str,
 ) -> Result<()> {
     if let Some(item) = items.next() {
@@ -413,46 +260,155 @@ fn join_appender<'a, W: Write>(
         writer.write_all(delim.as_bytes())?;
         writer.write_all(item.as_bytes())?;
     }
+    writer.write_all(&[b'\n'])?;
+    Ok(())
+}
+
+#[inline]
+fn parse_line<'a>(
+    bytes: &'a [u8],
+    cache: &mut Vec<Vec<&'a [u8]>>,
+    opts: &'a Opts,
+    regex: &'a Option<Regex>,
+    fields: &'a [FieldRange],
+) -> Result<()> {
+    // Create a lazy splitter
+    let mut parts = splitter(bytes, &opts.delimiter.as_bytes(), regex.as_ref());
+    let mut iterator_index = 0;
+
+    // Iterate over our ranges and write any fields that are contained by them.
+    for &FieldRange { low, high, pos } in fields {
+        // Advance up to low end of range
+        if low > iterator_index {
+            match parts.nth(low - iterator_index - 1) {
+                Some(_part) => {
+                    iterator_index = low;
+                }
+                None => break,
+            }
+        }
+
+        // Advance through the range
+        for _ in 0..=high - low {
+            match parts.next() {
+                Some(part) => {
+                    // Guaranteed to be in range since staging is created based on field pos anyways
+                    if let Some(reshuffled_range) = cache.get_mut(pos) {
+                        reshuffled_range.push(part)
+                    }
+                }
+                None => break,
+            }
+            iterator_index += 1;
+        }
+    }
     Ok(())
 }
 
 /// Run the actual parsing and writing
-fn run<R: Read, W: Write>(
-    reader: &mut BufReader<R>,
-    writer: &mut BufWriter<W>,
-    opts: &Opts,
-) -> Result<()> {
+fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result<()> {
     let mut buffer = String::new();
     let mut skip_first_read = false;
+    let mut writer = BufWriter::with_capacity(0x20000, writer);
+    let mut reader = BufReader::with_capacity(0x20000, reader);
 
     let fields = match (&opts.fields, &opts.header_fields) {
         (Some(field_list), Some(header_fields)) => {
-            reader.read_line(&mut buffer)?;
-            buffer.pop(); // remove newline
-            skip_first_read = true;
-            let mut fields = FieldRange::from_list(field_list)?;
-            let header_fields = FieldRange::from_header_list(
-                header_fields,
-                &buffer,
-                &opts.delimiter,
-                opts.literal,
-            )?;
-            fields.extend(header_fields.into_iter());
-            FieldRange::post_process_ranges(&mut fields);
-            fields
+            todo!()
+            // reader.read_line(&mut buffer)?;
+            // buffer.pop(); // remove newline
+            // skip_first_read = true;
+            // let mut fields = FieldRange::from_list(field_list)?;
+            // let header_fields = FieldRange::from_header_list(
+            //     header_fields,
+            //     &buffer.as_bytes(),
+            //     &opts.delimiter,
+            //     opts.literal,
+            // )?;
+            // fields.extend(header_fields.into_iter());
+            // FieldRange::post_process_ranges(&mut fields);
+            // fields
         }
         (Some(field_list), None) => FieldRange::from_list(field_list)?,
         (None, Some(header_fields)) => {
-            reader.read_line(&mut buffer)?;
-            buffer.pop(); // remove newline
-            skip_first_read = true;
-            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
+            unreachable!()
+            // reader.read_line(&mut buffer)?;
+            // buffer.pop(); // remove newline
+            // skip_first_read = true;
+            // FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
         }
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
             exit(1);
         }
     };
+
+    let regex = if opts.delim_is_regex {
+        Some(Regex::new(&opts.delimiter)?)
+    } else {
+        None
+    };
+    let mut empty_cache: Vec<Vec<&'static [u8]>> = vec![vec![]; fields.len()];
+
+    let mut bytes = vec![];
+    let mut consumed = 0;
+    loop {
+        // Process the buffer
+        {
+            let mut buf = reader.fill_buf()?;
+            while let Some(index) = buf.find_byte(b'\n') {
+                let mut cache = empty_cache;
+                let (record, rest) = buf.split_at(index + 1);
+                buf = rest;
+                consumed += record.len();
+                parse_line(
+                    &record[..record.len() - 1],
+                    &mut cache,
+                    &opts,
+                    &regex,
+                    &fields,
+                );
+                // Now write the values in the correct order
+                join_appender(
+                    &mut writer,
+                    cache.iter_mut().flat_map(|values| values.drain(..)),
+                    &opts.output_delimiter,
+                )?;
+                empty_cache = unsafe { core::mem::transmute(cache) };
+            }
+            bytes.extend_from_slice(&buf);
+            consumed += buf.len();
+        }
+
+        // Get next buffer
+        let mut cache = empty_cache;
+        reader.consume(consumed);
+        consumed = 0;
+        reader.read_until(b'\n', &mut bytes)?;
+        if bytes.is_empty() {
+            break;
+        }
+        // Do stuff with record - new scope so that parts are dropped before bytes are cleared
+        {
+            parse_line(
+                &bytes[..bytes.len() - 1],
+                &mut cache,
+                &opts,
+                &regex,
+                &fields,
+            );
+            // Now write the values in the correct order
+            join_appender(
+                &mut writer,
+                cache.iter_mut().flat_map(|values| values.drain(..)),
+                &opts.output_delimiter,
+            )?;
+        }
+        empty_cache = unsafe { core::mem::transmute(cache) };
+        bytes.clear();
+    }
+    reader.consume(consumed);
+    writer.flush()?;
 
     // This vec is reused with each pass of the loop. It holds a vec for each FieldRange. Values
     // are pushed onto each FieldRange's vec and then printed at the end of the loop. This allows
@@ -467,68 +423,68 @@ fn run<R: Read, W: Write>(
     // this is so as well. See links in the linked rust-lang thread.
     //
     // See also https://users.rust-lang.org/t/review-of-unsafe-usage/61520
-    let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
-    loop {
-        // If we read the header line then use existing buffer.
-        if skip_first_read {
-            skip_first_read = false;
-        } else {
-            if reader.read_line(&mut buffer)? == 0 {
-                break;
-            }
-            // pop the newline off the string
-            buffer.pop();
-        }
+    // let mut staging_empty: Vec<Vec<&'static str>> = vec![vec![]; fields.len()];
+    // loop {
+    //     // If we read the header line then use existing buffer.
+    //     if skip_first_read {
+    //         skip_first_read = false;
+    //     } else {
+    //         if reader.read_line(&mut buffer)? == 0 {
+    //             break;
+    //         }
+    //         // pop the newline off the string
+    //         buffer.pop();
+    //     }
 
-        // Create a lazy splitter
-        let mut parts = opts.delimiter.split(&buffer).peekable();
-        let mut iterator_index = 0;
-        let mut staging: Vec<Vec<&str>> = staging_empty;
+    //     // Create a lazy splitter
+    //     let mut parts = opts.delimiter.split(&buffer).peekable();
+    //     let mut iterator_index = 0;
+    //     let mut staging: Vec<Vec<&str>> = staging_empty;
 
-        // Iterate over our ranges and write any fields that are contained by them.
-        for &FieldRange { low, high, pos } in &fields {
-            // Advance up to low end of range
-            if low > iterator_index {
-                match parts.nth(low - iterator_index - 1) {
-                    Some(_part) => {
-                        iterator_index = low;
-                    }
-                    None => break,
-                }
-            }
+    //     // Iterate over our ranges and write any fields that are contained by them.
+    //     for &FieldRange { low, high, pos } in &fields {
+    //         // Advance up to low end of range
+    //         if low > iterator_index {
+    //             match parts.nth(low - iterator_index - 1) {
+    //                 Some(_part) => {
+    //                     iterator_index = low;
+    //                 }
+    //                 None => break,
+    //             }
+    //         }
 
-            // Advance through the range
-            for _ in 0..=high - low {
-                match parts.next() {
-                    Some(part) => {
-                        // Guaranteed to be in range since staging is created based on field pos anyways
-                        if let Some(staged_range) = staging.get_mut(pos) {
-                            staged_range.push(part)
-                        }
-                    }
-                    None => break,
-                }
-                iterator_index += 1;
-            }
-        }
+    //         // Advance through the range
+    //         for _ in 0..=high - low {
+    //             match parts.next() {
+    //                 Some(part) => {
+    //                     // Guaranteed to be in range since staging is created based on field pos anyways
+    //                     if let Some(staged_range) = staging.get_mut(pos) {
+    //                         staged_range.push(part)
+    //                     }
+    //                 }
+    //                 None => break,
+    //             }
+    //             iterator_index += 1;
+    //         }
+    //     }
 
-        // Now write the values in the correct order
-        join_appender(
-            writer,
-            staging.iter_mut().flat_map(|values| values.drain(..)),
-            &opts.output_delimiter,
-        )?;
+    //     // Now write the values in the correct order
+    //     join_appender(
+    //         writer,
+    //         staging.iter_mut().flat_map(|values| values.drain(..)),
+    //         &opts.output_delimiter,
+    //     )?;
 
-        // Write endline
-        writeln!(writer)?;
-        // writer.appendln(std::iter::empty());
-        staging_empty = unsafe {
-            // Safety: layout of types which only differ in lifetimes is the same
-            ::core::mem::transmute(staging)
-        };
-        buffer.clear();
-    }
-    writer.flush()?;
+    //     // Write endline
+    //     writeln!(writer)?;
+    //     // writer.appendln(std::iter::empty());
+    //     staging_empty = unsafe {
+    //         // Safety: layout of types which only differ in lifetimes is the same
+    //         ::core::mem::transmute(staging)
+    //     };
+    //     buffer.clear();
+    // }
+    // writer.flush()?;
     Ok(())
 }
 
@@ -537,75 +493,6 @@ mod test {
     use super::*;
     use bstr::io::BufReadExt;
     use tempfile::TempDir;
-
-    #[test]
-    #[rustfmt::skip::macros(assert_eq)]
-    fn test_parse_fields_good() {
-        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0}], FieldRange::from_list("1").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: 3, pos: 1}], FieldRange::from_list("1,4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 2}], FieldRange::from_list("1,2,4-").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 1}], FieldRange::from_list("1,4-,5-8").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1},  FieldRange { low: 3, high: usize::MAX - 1, pos: 0}, FieldRange { low: 4, high: 7, pos: 2}], FieldRange::from_list("4-,1,5-8").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 7, pos: 0}], FieldRange::from_list("-4,5-8").unwrap());
-    }
-
-    #[test]
-    fn test_parse_fields_bad() {
-        assert!(FieldRange::from_list("0").is_err());
-        assert!(FieldRange::from_list("4-1").is_err());
-        assert!(FieldRange::from_list("cat").is_err());
-        assert!(FieldRange::from_list("1-dog").is_err());
-        assert!(FieldRange::from_list("mouse-4").is_err());
-    }
-
-    #[test]
-    fn test_parse_header_fields() {
-        let header = "is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
-        let delim = Regex::new("-").unwrap();
-        let header_fields = vec![
-            Regex::new(r"^is_.*$").unwrap(),
-            Regex::new("dog").unwrap(),
-            Regex::new(r"\$%").unwrap(),
-        ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
-        assert_eq!(
-            vec![
-                FieldRange {
-                    low: 0,
-                    high: 1,
-                    pos: 0
-                },
-                FieldRange {
-                    low: 5,
-                    high: 5,
-                    pos: 2 // pos 2 because it's the 3rd regex in header_fields
-                }
-            ],
-            fields
-        );
-    }
-
-    #[test]
-    fn test_parse_header_fields_literal() {
-        let header = "is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
-        let delim = Regex::new("-").unwrap();
-        let header_fields = vec![
-            Regex::new(r"^is_.*$").unwrap(),
-            Regex::new("dog").unwrap(),
-            Regex::new(r"\$%").unwrap(),
-            Regex::new(r"is").unwrap(),
-        ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, true).unwrap();
-        assert_eq!(
-            vec![FieldRange {
-                low: 1,
-                high: 1,
-                pos: 3
-            },],
-            fields
-        );
-    }
 
     /// Build a set of opts for testing
     fn build_opts(
@@ -616,7 +503,8 @@ mod test {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
-            delimiter: Regex::new(r"\s+").unwrap(),
+            delimiter: String::from(r"\s+"),
+            delim_is_regex: true,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
@@ -633,8 +521,11 @@ mod test {
 
         for line in reader.byte_lines() {
             let line = &line.unwrap();
-            let line = unsafe { std::str::from_utf8_unchecked(line) };
-            result.push(r.split(line).map(|s| s.to_owned()).collect());
+            result.push(
+                r.split(line)
+                    .map(|s| unsafe { String::from_utf8_unchecked(s.to_vec()) })
+                    .collect(),
+            );
         }
         result
     }

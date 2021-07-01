@@ -1,13 +1,16 @@
-use anyhow::{Context, Error, Result, anyhow};
+use anyhow::{anyhow, Context, Error, Result};
 use bstr::ByteSlice;
 use env_logger::Env;
 use grep_cli::{stdout, DecompressionReaderBuilder};
-use hcklib::{core::Core, field_range::FieldRange};
+use hcklib::{
+    core::Core,
+    field_range::{FieldRange, RegexOrStr},
+};
 use log::error;
 use regex::bytes::Regex;
 use std::{
     fs::File,
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     process::exit,
 };
@@ -200,19 +203,28 @@ fn main() -> Result<()> {
 
 /// Run the actual parsing and writing
 fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result<()> {
-    let mut skip_first_read = false;
     let mut writer = BufWriter::with_capacity(0x20000, writer);
     let mut reader = BufReader::with_capacity(0x20000, reader);
-    let first_line = reader.buffer().find_byte(b'\n').ok_or(Err(anyhow!("Could not find first line."))).unwrap();
+    reader.fill_buf()?;
+    let first_line = reader
+        .buffer()
+        .find_byte(b'\n')
+        .expect("no first line found");
+    // ToDo fix
+    let regex = Regex::new(&opts.delimiter).unwrap();
+    let delim = if opts.delim_is_regex {
+        RegexOrStr::Regex(&regex)
+    } else {
+        RegexOrStr::Str(&opts.delimiter)
+    };
 
     let fields = match (&opts.fields, &opts.header_fields) {
         (Some(field_list), Some(header_fields)) => {
-            skip_first_read = true;
             let mut fields = FieldRange::from_list(field_list)?;
             let header_fields = FieldRange::from_header_list(
                 header_fields,
                 &reader.buffer()[..first_line - 1],
-                &opts.delimiter,
+                delim,
                 opts.literal,
             )?;
             fields.extend(header_fields.into_iter());
@@ -220,13 +232,12 @@ fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result
             fields
         }
         (Some(field_list), None) => FieldRange::from_list(field_list)?,
-        (None, Some(header_fields)) => {
-            unreachable!()
-            reader.read_line(&mut buffer)?;
-            buffer.pop(); // remove newline
-            skip_first_read = true;
-            FieldRange::from_header_list(header_fields, &buffer, &opts.delimiter, opts.literal)?
-        }
+        (None, Some(header_fields)) => FieldRange::from_header_list(
+            header_fields,
+            &reader.buffer()[..first_line - 1],
+            delim,
+            opts.literal,
+        )?,
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
             exit(1);

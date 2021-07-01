@@ -22,19 +22,19 @@ pub enum FieldError {
     NoHeadersMatched,
 }
 
-pub enum RegexOrStr<'a> {
-    Regex(&'a Regex),
-    Str(&'a str),
+pub enum RegexOrStr<'b> {
+    Regex(&'b Regex),
+    Str(&'b str),
 }
 
-// impl<'a> RegexOrStr<'a> {
-//     fn split<'b>(&self, line: &[u8]) -> Box<dyn Iterator<Item = &[u8]>> {
-//         match self {
-//             RegexOrStr::Regex(r) => Box::new(r.split(line)),
-//             RegexOrStr::Str(s) => Box::new(line.split_str(s)),
-//         }
-//     }
-// }
+impl<'b> RegexOrStr<'b> {
+    fn split(&'b self, line: &'b [u8]) -> Box<dyn Iterator<Item = &'b [u8]> + 'b> {
+        match self {
+            RegexOrStr::Regex(r) => Box::new(r.split(line)),
+            RegexOrStr::Str(s) => Box::new(line.split_str(s)),
+        }
+    }
+}
 
 /// Represent a range of columns to keep.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -139,7 +139,7 @@ impl FieldRange {
     pub fn from_header_list(
         list: &[Regex],
         header: &[u8],
-        delim: &str,
+        delim: RegexOrStr,
         literal: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];
@@ -219,12 +219,13 @@ mod test {
     fn test_parse_header_fields() {
         let header = b"is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
+        let delim = RegexOrStr::Regex(&delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
+        let fields = FieldRange::from_header_list(&header_fields, header, delim, false).unwrap();
         assert_eq!(
             vec![
                 FieldRange {
@@ -246,13 +247,14 @@ mod test {
     fn test_parse_header_fields_literal() {
         let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
+        let delim = RegexOrStr::Regex(&delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
             Regex::new(r"is").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, true).unwrap();
+        let fields = FieldRange::from_header_list(&header_fields, header, delim, true).unwrap();
         assert_eq!(
             vec![FieldRange {
                 low: 1,

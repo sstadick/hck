@@ -130,7 +130,11 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 - Add complement argument
 - Don't reparse fields / headers for each new file
-- Look at ripgreps searcher crate and how it iterates over lines
+- Allow for two runmodes - buffered or mmap, configure similar to how ripgrep does it (care for the -z option as well)
+- Add back in the peek at the first line
+- Reuse the LineBuffer if possible
+- Verify that ripgrep reallydoes use mmap pretty much always
+- Add a directio mode similar to mmap mode?
 - Bake in grep somehow?
 - Move tests from main to core
 

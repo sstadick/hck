@@ -5,6 +5,7 @@ use grep_cli::{stdout, DecompressionReaderBuilder};
 use hcklib::{
     core::Core,
     field_range::{FieldRange, RegexOrStr},
+    line_parser::{RegexLineParser, SubStrLineParser},
 };
 use log::error;
 use regex::bytes::Regex;
@@ -179,6 +180,7 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
     let mut writer = select_output(opts.output.as_ref())?;
+    let file = File::open(&opts.input[0])?;
 
     let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
         vec![Ok(get_stdin())]
@@ -191,7 +193,7 @@ fn main() -> Result<()> {
 
     for r in readers {
         let mut r = r?;
-        if let Err(err) = run(&mut r, &mut writer, &opts) {
+        if let Err(err) = run(&mut r, &mut writer, &file, &opts) {
             if is_broken_pipe(&err) {
                 exit(0)
             }
@@ -203,14 +205,12 @@ fn main() -> Result<()> {
 }
 
 /// Run the actual parsing and writing
-fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result<()> {
+fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, file: &File, opts: &Opts) -> Result<()> {
     let mut writer = BufWriter::new(writer);
-    let mut reader = BufReader::new(reader);
-    reader.fill_buf()?;
-    let first_line = reader
-        .buffer()
-        .find_byte(b'\n')
-        .expect("no first line found");
+    // Need to wrap in my own reader from the start, reuse the LineBuffer
+    // let mut rdr = BufReader::new(reader.by_ref());
+    // rdr.fill_buf()?;
+    // let first_line = rdr.buffer().find_byte(b'\n').expect("no first line found");
 
     let delim = if opts.delim_is_regex {
         RegexOrStr::Regex(Regex::new(&opts.delimiter)?)
@@ -220,36 +220,56 @@ fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, opts: &Opts) -> Result
 
     let fields = match (&opts.fields, &opts.header_fields) {
         (Some(field_list), Some(header_fields)) => {
-            let mut fields = FieldRange::from_list(field_list)?;
-            let header_fields = FieldRange::from_header_list(
-                header_fields,
-                &reader.buffer()[..first_line - 1],
-                &delim,
-                opts.header_is_regex,
-            )?;
-            fields.extend(header_fields.into_iter());
-            FieldRange::post_process_ranges(&mut fields);
-            fields
+            todo!()
+            // let mut fields = FieldRange::from_list(field_list)?;
+            // let header_fields = FieldRange::from_header_list(
+            //     header_fields,
+            //     &rdr.buffer()[..first_line - 1],
+            //     &delim,
+            //     opts.header_is_regex,
+            // )?;
+            // fields.extend(header_fields.into_iter());
+            // FieldRange::post_process_ranges(&mut fields);
+            // fields
         }
         (Some(field_list), None) => FieldRange::from_list(field_list)?,
-        (None, Some(header_fields)) => FieldRange::from_header_list(
-            header_fields,
-            &reader.buffer()[..first_line - 1],
-            &delim,
-            opts.header_is_regex,
-        )?,
+        (None, Some(header_fields)) => {
+            todo!()
+            //     FieldRange::from_header_list(
+            //     header_fields,
+            //     &rdr.buffer()[..first_line - 1],
+            //     &delim,
+            //     opts.header_is_regex,
+            // )?,
+        }
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
             exit(1);
         }
     };
 
-    let mut core = Core::new(&mut writer, &opts.output_delimiter.as_bytes(), &fields);
-
+    // let line_parser = ;
     match &delim {
-        RegexOrStr::Regex(regex) => core.process_reader_regex(&mut reader, &regex)?,
-        RegexOrStr::Str(s) => core.process_reader_substr(&mut reader, s.as_bytes())?,
-    }
+        RegexOrStr::Regex(regex) => {
+            let mut core = Core::new(
+                &mut writer,
+                &opts.output_delimiter.as_bytes(),
+                &fields,
+                RegexLineParser::new(&fields, &regex),
+            );
+            core.process_reader(reader.by_ref(), file)?;
+        }
+        RegexOrStr::Str(s) => {
+            let mut core = Core::new(
+                &mut writer,
+                &opts.output_delimiter.as_bytes(),
+                &fields,
+                SubStrLineParser::new(&fields, s.as_bytes()),
+            );
+            core.process_reader(reader.by_ref(), file)?;
+        }
+    };
+
     Ok(())
 }
 

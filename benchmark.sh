@@ -2,7 +2,7 @@
 set -eo pipefail
 
 test_data="$1"
-cp "${test_data}" ./hyper_data.txt
+# cp "${test_data}" ./hyper_data.txt
 
 # Single Character Delimiter tests
 

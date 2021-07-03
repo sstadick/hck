@@ -4,38 +4,55 @@
 //! lifetime coersion to reuse the `shuffler` vector really locks down the possible options.
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
-use crate::field_range::FieldRange;
+use crate::{
+    field_range::FieldRange,
+    line_parser::{LineParser, SubStrLineParser},
+};
 use bstr::ByteSlice;
+use memmap::Mmap;
 use regex::bytes::Regex;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use ripline::{
+    line_buffer::{LineBufferBuilder, LineBufferReader},
+    lines::{self, LineIter},
+    LineTerminator,
+};
+use std::{
+    fs::File,
+    io::{self, BufRead, BufReader, Read, Write},
+};
 
 /// The main processing loop
-pub struct Core<'a, W>
-where
-    W: Write,
-{
+pub struct Core<'a, L, W> {
     writer: &'a mut W,
     output_delimiter: &'a [u8],
     fields: &'a [FieldRange],
+    line_parser: L,
 }
 
-impl<'a, W> Core<'a, W>
+impl<'a, L, W> Core<'a, L, W>
 where
     W: Write,
+    L: LineParser<'a>,
 {
-    pub fn new(writer: &'a mut W, output_delimiter: &'a [u8], fields: &'a [FieldRange]) -> Self {
+    pub fn new(
+        writer: &'a mut W,
+        output_delimiter: &'a [u8],
+        fields: &'a [FieldRange],
+        line_parser: L,
+    ) -> Self {
         Self {
             writer,
             output_delimiter,
             fields,
+            line_parser,
         }
     }
 
     // Write a lines worth of items, properly delimited and with a newline.
     #[inline]
-    fn join_appender<'b>(
+    fn join_appender<'c>(
         &mut self,
-        mut items: impl Iterator<Item = &'b [u8]>,
+        mut items: impl Iterator<Item = &'c [u8]>,
     ) -> Result<(), io::Error> {
         if let Some(item) = items.next() {
             self.writer.write_all(item)?;
@@ -49,225 +66,54 @@ where
         Ok(())
     }
 
-    /// Process a reader using regex byte splitting
-    pub fn process_reader_regex<R>(
-        &mut self,
-        reader: &mut BufReader<R>,
-        regex: &Regex,
-    ) -> Result<(), io::Error>
-    where
-        R: Read,
-    {
-        let mut empty_shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
-
-        let mut bytes = vec![];
-        let mut consumed = 0;
-
-        loop {
-            // Process the buffer
-            {
-                let mut buf = reader.fill_buf()?;
-                while let Some(index) = buf.find_byte(b'\n') {
-                    let mut shuffler = empty_shuffler;
-                    let (record, rest) = buf.split_at(index + 1);
-                    buf = rest;
-                    consumed += record.len();
-                    let mut parts = regex.split(&record[..record.len() - 1]).peekable();
-                    let mut iterator_index = 0;
-
-                    // Iterate over our ranges and write any fields that are contained by them.
-                    for &FieldRange { low, high, pos } in self.fields {
-                        // Advance up to low end of range
-                        if low > iterator_index {
-                            match parts.nth(low - iterator_index - 1) {
-                                Some(_part) => {
-                                    iterator_index = low;
-                                }
-                                None => break,
-                            }
-                        }
-
-                        // Advance through the range
-                        for _ in 0..=high - low {
-                            match parts.next() {
-                                Some(part) => {
-                                    // Guaranteed to be in range since staging is created based on field pos anyways
-                                    if let Some(reshuffled_range) = shuffler.get_mut(pos) {
-                                        reshuffled_range.push(part)
-                                    }
-                                }
-                                None => break,
-                            }
-                            iterator_index += 1;
-                        }
-                    }
-                    // Now write the values in the correct order
-                    self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
-                    empty_shuffler = unsafe { core::mem::transmute(shuffler) };
-                }
-                bytes.extend_from_slice(&buf);
-                consumed += buf.len();
-            }
-
-            // Get next buffer
-            let mut shuffler = empty_shuffler;
-            reader.consume(consumed);
-            consumed = 0;
-            reader.read_until(b'\n', &mut bytes)?;
-            if bytes.is_empty() {
-                break;
-            }
-            // Do stuff with record - new scope so that parts are dropped before bytes are cleared
-            {
-                let mut parts = regex.split(&bytes[..bytes.len() - 1]).peekable();
-                let mut iterator_index = 0;
-
-                // Iterate over our ranges and write any fields that are contained by them.
-                for &FieldRange { low, high, pos } in self.fields {
-                    // Advance up to low end of range
-                    if low > iterator_index {
-                        match parts.nth(low - iterator_index - 1) {
-                            Some(_part) => {
-                                iterator_index = low;
-                            }
-                            None => break,
-                        }
-                    }
-
-                    // Advance through the range
-                    for _ in 0..=high - low {
-                        match parts.next() {
-                            Some(part) => {
-                                // Guaranteed to be in range since staging is created based on field pos anyways
-                                if let Some(reshuffled_range) = shuffler.get_mut(pos) {
-                                    reshuffled_range.push(part)
-                                }
-                            }
-                            None => break,
-                        }
-                        iterator_index += 1;
-                    }
-                }
-                // Now write the values in the correct order
-                self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
-            }
-            empty_shuffler = unsafe { core::mem::transmute(shuffler) };
-            bytes.clear();
+    // Formalize ripline and make it a crate with good docs showing how to use it for both mmap
+    // and regular files
+    // Need to configure more like ripgrep so that we can optionally work off of a Reader or off of a byte slice only
+    pub fn process_reader<R: Read>(&mut self, reader: R, file: &File) -> Result<(), io::Error> {
+        let terminator = LineTerminator::byte(b'\n');
+        let bytes = unsafe { Mmap::map(file).unwrap() };
+        let iter = LineIter::new(terminator.as_byte(), bytes.as_bytes());
+        let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        for line in iter {
+            let mut s: Vec<Vec<&[u8]>> = shuffler;
+            self.line_parser
+                .parse_line(lines::without_terminator(&line, terminator), &mut s);
+            self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
+                .unwrap();
+            shuffler = unsafe { core::mem::transmute(s) };
         }
-        reader.consume(consumed);
-        // TODO: Could maybe defer this?
-        self.writer.flush()?;
-        Ok(())
-    }
 
-    /// Process a reader using substr splitting.
-    pub fn process_reader_substr<R>(
-        &mut self,
-        reader: &mut BufReader<R>,
-        delimiter: &[u8],
-    ) -> Result<(), io::Error>
-    where
-        R: Read,
-    {
-        let mut empty_shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        // let terminator = LineTerminator::byte(b'\n');
+        // let mut line_buffer = LineBufferBuilder::new().build();
+        // let mut line_buffer_reader = LineBufferReader::new(reader, &mut line_buffer);
+        // let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        // while line_buffer_reader.fill().unwrap() {
+        //     let iter = LineIter::new(terminator.as_byte(), line_buffer_reader.buffer());
+        //     {
+        //         for line in iter {
+        //             let mut s: Vec<Vec<&[u8]>> = shuffler;
+        //             self.line_parser
+        //                 .parse_line(lines::without_terminator(&line, terminator), &mut s);
+        //             self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
+        //                 .unwrap();
+        //             shuffler = unsafe { core::mem::transmute(s) };
+        //         }
+        //     }
+        //     line_buffer_reader.consume(line_buffer_reader.buffer().len());
+        // }
 
-        let mut bytes = vec![];
-        let mut consumed = 0;
-
-        loop {
-            // Process the buffer
-            {
-                let mut buf = reader.fill_buf()?;
-                while let Some(index) = buf.find_byte(b'\n') {
-                    let mut shuffler = empty_shuffler;
-                    let (record, rest) = buf.split_at(index + 1);
-                    buf = rest;
-                    consumed += record.len();
-                    let mut parts = record[..record.len() - 1].split_str(delimiter).peekable();
-                    let mut iterator_index = 0;
-
-                    // Iterate over our ranges and write any fields that are contained by them.
-                    for &FieldRange { low, high, pos } in self.fields {
-                        // Advance up to low end of range
-                        if low > iterator_index {
-                            match parts.nth(low - iterator_index - 1) {
-                                Some(_part) => {
-                                    iterator_index = low;
-                                }
-                                None => break,
-                            }
-                        }
-
-                        // Advance through the range
-                        for _ in 0..=high - low {
-                            match parts.next() {
-                                Some(part) => {
-                                    // Guaranteed to be in range since staging is created based on field pos anyways
-                                    if let Some(reshuffled_range) = shuffler.get_mut(pos) {
-                                        reshuffled_range.push(part)
-                                    }
-                                }
-                                None => break,
-                            }
-                            iterator_index += 1;
-                        }
-                    }
-                    // Now write the values in the correct order
-                    self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
-                    empty_shuffler = unsafe { core::mem::transmute(shuffler) };
-                }
-                bytes.extend_from_slice(&buf);
-                consumed += buf.len();
-            }
-
-            // Get next buffer
-            let mut shuffler = empty_shuffler;
-            reader.consume(consumed);
-            consumed = 0;
-            reader.read_until(b'\n', &mut bytes)?;
-            if bytes.is_empty() {
-                break;
-            }
-            // Do stuff with record - new scope so that parts are dropped before bytes are cleared
-            {
-                let mut parts = bytes[..bytes.len() - 1].split_str(delimiter).peekable();
-                let mut iterator_index = 0;
-
-                // Iterate over our ranges and write any fields that are contained by them.
-                for &FieldRange { low, high, pos } in self.fields {
-                    // Advance up to low end of range
-                    if low > iterator_index {
-                        match parts.nth(low - iterator_index - 1) {
-                            Some(_part) => {
-                                iterator_index = low;
-                            }
-                            None => break,
-                        }
-                    }
-
-                    // Advance through the range
-                    for _ in 0..=high - low {
-                        match parts.next() {
-                            Some(part) => {
-                                // Guaranteed to be in range since staging is created based on field pos anyways
-                                if let Some(reshuffled_range) = shuffler.get_mut(pos) {
-                                    reshuffled_range.push(part)
-                                }
-                            }
-                            None => break,
-                        }
-                        iterator_index += 1;
-                    }
-                }
-                // Now write the values in the correct order
-                self.join_appender(shuffler.iter_mut().flat_map(|values| values.drain(..)))?;
-            }
-            empty_shuffler = unsafe { core::mem::transmute(shuffler) };
-            bytes.clear();
-        }
-        reader.consume(consumed);
-        // TODO: Could maybe defer this?
-        self.writer.flush()?;
+        // let mut reader = BufReader::with_capacity(64 * (1 << 10), reader);
+        // let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        // let mut line = vec![];
+        // while reader.read_until(b'\n', &mut line)? > 0 {
+        //     let mut s: Vec<Vec<&[u8]>> = shuffler;
+        //     self.line_parser
+        //         .parse_line(lines::without_terminator(&line, terminator), &mut s);
+        //     self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
+        //         .unwrap();
+        //     shuffler = unsafe { core::mem::transmute(s) };
+        //     line.clear();
+        // }
         Ok(())
     }
 }

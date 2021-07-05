@@ -132,9 +132,9 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Don't reparse fields / headers for each new file
 - Allow for two runmodes - buffered or mmap, configure similar to how ripgrep does it (care for the -z option as well)
 - Add back in the peek at the first line
-- Reuse the LineBuffer if possible
 - Verify that ripgrep reallydoes use mmap pretty much always
 - Add a directio mode similar to mmap mode?
+- Add a heuristic if using single byte delimiters to use memchr2 to look for newlines and delims at the same time and 'annotate' the line accordingly. Should save one pass over the data.
 - Bake in grep somehow?
 - Move tests from main to core
 

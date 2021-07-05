@@ -3,12 +3,14 @@ use bstr::ByteSlice;
 use env_logger::Env;
 use grep_cli::{stdout, DecompressionReaderBuilder};
 use hcklib::{
-    core::Core,
+    core::{Core, HckInput},
     field_range::{FieldRange, RegexOrStr},
     line_parser::{RegexLineParser, SubStrLineParser},
+    mmap::MmapChoice,
 };
-use log::error;
+use log::{error, info};
 use regex::bytes::Regex;
+use ripline::{line_buffer::LineBufferBuilder, LineTerminator};
 use std::{
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Read, Write},
@@ -45,31 +47,6 @@ pub mod built_info {
         /// Version of the software with git hash
         pub static ref VERSION: String = get_software_version();
     }
-}
-/// Determine whether we should read from a file or stdin.
-fn select_input<P: AsRef<Path>>(path: P, try_decompress: bool) -> Result<Box<dyn Read>> {
-    let reader: Box<dyn Read> =
-        if path.as_ref().as_os_str() == "-" {
-            get_stdin()
-        } else if try_decompress {
-            Box::new(
-                DecompressionReaderBuilder::new()
-                    .build(&path)
-                    .with_context(|| {
-                        format!("Failed to open {} for reading", path.as_ref().display())
-                    })?,
-            )
-        } else {
-            Box::new(File::open(&path).with_context(|| {
-                format!("Failed to open {} for reading", path.as_ref().display())
-            })?)
-        };
-    Ok(reader)
-}
-
-#[inline]
-fn get_stdin() -> Box<dyn Read> {
-    Box::new(io::stdin())
 }
 
 /// Determine if we should write to a file or stdout.
@@ -172,28 +149,41 @@ struct Opts {
     /// Try to find the correct decompression method based on the file extensions
     #[structopt(short = "z", long)]
     try_decompress: bool,
+
+    /// Disallow the posibility of using mmap
+    #[structopt(long)]
+    no_mmap: bool,
 }
 
 fn main() -> Result<()> {
     // TODO: add the complement argument to flip the FieldRange / excludes
     // TODO: parameterize newline
+    // TODO: clean up docs
+    // TODO: move tests / add more tests / test mmap functions
+    // TODO: make LineBuffer Configurable at top level
+    // TODO: any reason not to have mmap as Auto by default?
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
-    let mut writer = select_output(opts.output.as_ref())?;
-    let file = File::open(&opts.input[0])?;
 
-    let readers: Vec<Result<Box<dyn Read>>> = if opts.input.is_empty() {
-        vec![Ok(get_stdin())]
+    let mut writer = select_output(opts.output.as_ref())?;
+
+    let inputs: Vec<HckInput<PathBuf>> = if opts.input.is_empty() {
+        vec![HckInput::Stdin]
     } else {
         opts.input
             .iter()
-            .map(|p| select_input(p, opts.try_decompress))
+            .map(|p| {
+                if p.as_os_str() == "-" {
+                    HckInput::Stdin
+                } else {
+                    HckInput::Path(p.clone())
+                }
+            })
             .collect()
     };
 
-    for r in readers {
-        let mut r = r?;
-        if let Err(err) = run(&mut r, &mut writer, &file, &opts) {
+    for input in inputs.into_iter() {
+        if let Err(err) = run(input, &mut writer, &opts) {
             if is_broken_pipe(&err) {
                 exit(0)
             }
@@ -205,11 +195,11 @@ fn main() -> Result<()> {
 }
 
 /// Run the actual parsing and writing
-fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, file: &File, opts: &Opts) -> Result<()> {
+fn run<W: Write>(input: HckInput<PathBuf>, writer: &mut W, opts: &Opts) -> Result<()> {
     let mut writer = BufWriter::new(writer);
+
     // Need to wrap in my own reader from the start, reuse the LineBuffer
     // let mut rdr = BufReader::new(reader.by_ref());
-    // rdr.fill_buf()?;
     // let first_line = rdr.buffer().find_byte(b'\n').expect("no first line found");
 
     let delim = if opts.delim_is_regex {
@@ -218,29 +208,30 @@ fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, file: &File, opts: &Op
         RegexOrStr::Str(&opts.delimiter)
     };
 
-    let fields = match (&opts.fields, &opts.header_fields) {
+    let (extra, fields) = match (&opts.fields, &opts.header_fields) {
         (Some(field_list), Some(header_fields)) => {
-            todo!()
-            // let mut fields = FieldRange::from_list(field_list)?;
-            // let header_fields = FieldRange::from_header_list(
-            //     header_fields,
-            //     &rdr.buffer()[..first_line - 1],
-            //     &delim,
-            //     opts.header_is_regex,
-            // )?;
-            // fields.extend(header_fields.into_iter());
-            // FieldRange::post_process_ranges(&mut fields);
-            // fields
+            let first_line = input.peek_first_line()?;
+            let mut fields = FieldRange::from_list(field_list)?;
+            let header_fields = FieldRange::from_header_list(
+                header_fields,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            fields.extend(header_fields.into_iter());
+            FieldRange::post_process_ranges(&mut fields);
+            (Some(first_line), fields)
         }
-        (Some(field_list), None) => FieldRange::from_list(field_list)?,
+        (Some(field_list), None) => (None, FieldRange::from_list(field_list)?),
         (None, Some(header_fields)) => {
-            todo!()
-            //     FieldRange::from_header_list(
-            //     header_fields,
-            //     &rdr.buffer()[..first_line - 1],
-            //     &delim,
-            //     opts.header_is_regex,
-            // )?,
+            let first_line = input.peek_first_line()?;
+            let fields = FieldRange::from_header_list(
+                header_fields,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            (Some(first_line), fields)
         }
         (None, None) => {
             eprintln!("Must select one or both `fields` and 'header-fields`.");
@@ -248,28 +239,35 @@ fn run<R: Read, W: Write>(reader: &mut R, writer: &mut W, file: &File, opts: &Op
         }
     };
 
-    // let line_parser = ;
+    // Add debug logging
+    let mmap = if opts.no_mmap {
+        MmapChoice::never()
+    } else {
+        unsafe { MmapChoice::auto() }
+    };
+
     match &delim {
         RegexOrStr::Regex(regex) => {
             let mut core = Core::new(
-                &mut writer,
                 &opts.output_delimiter.as_bytes(),
                 &fields,
                 RegexLineParser::new(&fields, &regex),
+                LineTerminator::default(),
+                mmap,
             );
-            core.process_reader(reader.by_ref(), file)?;
+            core.hck_input(input, writer, extra)?;
         }
         RegexOrStr::Str(s) => {
             let mut core = Core::new(
-                &mut writer,
                 &opts.output_delimiter.as_bytes(),
                 &fields,
-                SubStrLineParser::new(&fields, s.as_bytes()),
+                SubStrLineParser::new(&fields, &opts.delimiter.as_bytes()),
+                LineTerminator::default(),
+                mmap,
             );
-            core.process_reader(reader.by_ref(), file)?;
+            core.hck_input(input, writer, extra)?;
         }
     };
-
     Ok(())
 }
 
@@ -295,6 +293,7 @@ mod test {
             header_fields: None,
             header_is_regex: true,
             try_decompress: false,
+            no_mmap: true,
         }
     }
 
@@ -314,6 +313,7 @@ mod test {
             header_fields: None,
             header_is_regex: true,
             try_decompress: false,
+            no_mmap: true,
         }
     }
 
@@ -345,10 +345,10 @@ mod test {
 
     // Wrap the run function to create the readers and writers.
     fn run_wrapper<P: AsRef<Path>>(input: P, output: P, opts: &Opts) {
-        let mut reader = BufReader::new(File::open(input).unwrap());
+        // let mut reader = BufReader::new(File::open(input).unwrap());
         let mut writer = BufWriter::new(File::create(output).unwrap());
         // let mut writer = BufferedOutput::new(writer, FLUSH_SIZE, RESERVE_SIZE, MAX_SIZE);
-        run(&mut reader, &mut writer, opts).unwrap();
+        run(HckInput::Path(input.as_ref().to_owned()), &mut writer, opts).unwrap();
     }
 
     const FOURSPACE: &str = "    ";

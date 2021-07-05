@@ -256,6 +256,7 @@ dependencies = [
  "grep-searcher",
  "lazy_static",
  "log",
+ "memchr",
  "memmap2 0.2.3",
  "object-pool",
  "regex",

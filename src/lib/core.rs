@@ -4,116 +4,207 @@
 //! lifetime coersion to reuse the `shuffler` vector really locks down the possible options.
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
-use crate::{
-    field_range::FieldRange,
-    line_parser::{LineParser, SubStrLineParser},
-};
+use crate::{field_range::FieldRange, line_parser::LineParser, mmap::MmapChoice};
 use bstr::ByteSlice;
-use memmap::Mmap;
-use regex::bytes::Regex;
+use memchr;
 use ripline::{
-    line_buffer::{LineBufferBuilder, LineBufferReader},
+    line_buffer::{LineBuffer, LineBufferBuilder, LineBufferReader},
     lines::{self, LineIter},
     LineTerminator,
 };
 use std::{
     fs::File,
     io::{self, BufRead, BufReader, Read, Write},
+    path::Path,
 };
 
+pub enum HckInput<P: AsRef<Path>> {
+    Stdin,
+    Path(P),
+}
+
+impl<P: AsRef<Path>> HckInput<P> {
+    pub fn peek_first_line(&self) -> Result<String, io::Error> {
+        let mut buffer = String::new();
+        match self {
+            HckInput::Stdin => {
+                io::stdin().read_line(&mut buffer)?;
+            }
+
+            HckInput::Path(path) => {
+                BufReader::new(File::open(path)?).read_line(&mut buffer)?;
+            }
+        }
+        Ok(buffer)
+    }
+}
+
 /// The main processing loop
-pub struct Core<'a, L, W> {
-    writer: &'a mut W,
+pub struct Core<'a, L> {
     output_delimiter: &'a [u8],
     fields: &'a [FieldRange],
     line_parser: L,
+    line_terminator: LineTerminator,
+    mmap_choice: MmapChoice,
+    line_buffer: LineBuffer,
 }
 
-impl<'a, L, W> Core<'a, L, W>
+impl<'a, L> Core<'a, L>
 where
-    W: Write,
     L: LineParser<'a>,
 {
     pub fn new(
-        writer: &'a mut W,
         output_delimiter: &'a [u8],
         fields: &'a [FieldRange],
         line_parser: L,
+        line_terminator: LineTerminator,
+        mmap_choice: MmapChoice,
     ) -> Self {
+        // Avoid allocating a big line buffer if we are likely not going to use it.
+        let line_buffer = LineBufferBuilder::new()
+            .capacity(if mmap_choice.is_enabled() {
+                0
+            } else {
+                64 * (1 << 10)
+            })
+            .build();
         Self {
-            writer,
             output_delimiter,
             fields,
             line_parser,
+            line_terminator,
+            mmap_choice,
+            line_buffer,
         }
     }
 
-    // Write a lines worth of items, properly delimited and with a newline.
-    #[inline]
-    fn join_appender<'c>(
+    pub fn hck_input<P, W>(
         &mut self,
-        mut items: impl Iterator<Item = &'c [u8]>,
-    ) -> Result<(), io::Error> {
-        if let Some(item) = items.next() {
-            self.writer.write_all(item)?;
+        input: HckInput<P>,
+        mut output: W,
+        header: Option<String>,
+    ) -> Result<(), io::Error>
+    where
+        P: AsRef<Path>,
+        W: Write,
+    {
+        if let Some(header) = header {
+            self.hck_bytes(header.as_bytes(), &mut output)?;
         }
-
-        for item in items {
-            self.writer.write_all(self.output_delimiter)?;
-            self.writer.write_all(item)?;
+        match input {
+            HckInput::Stdin => {
+                let reader = io::stdin();
+                self.hck_reader(reader, &mut output)
+            }
+            HckInput::Path(path) => {
+                let file = File::open(&path)?;
+                if let Some(mmap) = self.mmap_choice.open(&file, Some(&path)) {
+                    self.hck_bytes(mmap.as_bytes(), &mut output)
+                } else {
+                    self.hck_reader(file, &mut output)
+                }
+            }
         }
-        self.writer.write_all(&[b'\n'])?;
-        Ok(())
     }
 
-    // Formalize ripline and make it a crate with good docs showing how to use it for both mmap
-    // and regular files
-    // Need to configure more like ripgrep so that we can optionally work off of a Reader or off of a byte slice only
-    pub fn process_reader<R: Read>(&mut self, reader: R, file: &File) -> Result<(), io::Error> {
-        let terminator = LineTerminator::byte(b'\n');
-        let bytes = unsafe { Mmap::map(file).unwrap() };
-        let iter = LineIter::new(terminator.as_byte(), bytes.as_bytes());
+    pub fn hck_bytes<W>(&mut self, bytes: &[u8], mut output: W) -> Result<(), io::Error>
+    where
+        W: Write,
+    {
+        // let bytes = unsafe { Mmap::map(file).unwrap() };
+        let iter = LineIter::new(self.line_terminator.as_byte(), bytes.as_bytes());
         let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
         for line in iter {
             let mut s: Vec<Vec<&[u8]>> = shuffler;
-            self.line_parser
-                .parse_line(lines::without_terminator(&line, terminator), &mut s);
-            self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
-                .unwrap();
+            self.line_parser.parse_line(
+                lines::without_terminator(&line, self.line_terminator),
+                &mut s,
+            );
+            let items = s.iter_mut().flat_map(|s| s.drain(..));
+            output.join_append(self.output_delimiter, items, &self.line_terminator)?;
             shuffler = unsafe { core::mem::transmute(s) };
         }
+        Ok(())
+    }
 
+    // pub fn hck_bytes_fast<W>(&mut self, bytes: &[u8], &output: W) -> Result<(), io::Error> {
+    //     // find all occurances of delim and newline
+    //     // assert each are only one byte
+    //     let mut iter = memchr::memchr2_iter(
+    //         self.output_delimiter[0],
+    //         self.line_terminator.as_byte(),
+    //         bytes,
+    //     );
+    //     for i in iter {
+    //         let b = bytes[i];
+    //         if b == self.[0] {
+    //             todo!()
+    //         } else if b == self.line_terminator.as_byte() {
+    //             todo!()
+    //         }
+    //     }
+    //     Ok(())
+    // }
+
+    /// Process the bytes from a reader line by line
+    pub fn hck_reader<R: Read, W: Write>(
+        &mut self,
+        reader: R,
+        mut output: W,
+    ) -> Result<(), io::Error> {
+        // let mut lb = self.line_buffer.borrow_mut();
+        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
         // let terminator = LineTerminator::byte(b'\n');
         // let mut line_buffer = LineBufferBuilder::new().build();
         // let mut line_buffer_reader = LineBufferReader::new(reader, &mut line_buffer);
-        // let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
-        // while line_buffer_reader.fill().unwrap() {
-        //     let iter = LineIter::new(terminator.as_byte(), line_buffer_reader.buffer());
-        //     {
-        //         for line in iter {
-        //             let mut s: Vec<Vec<&[u8]>> = shuffler;
-        //             self.line_parser
-        //                 .parse_line(lines::without_terminator(&line, terminator), &mut s);
-        //             self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
-        //                 .unwrap();
-        //             shuffler = unsafe { core::mem::transmute(s) };
-        //         }
-        //     }
-        //     line_buffer_reader.consume(line_buffer_reader.buffer().len());
-        // }
+        let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        while reader.fill().unwrap() {
+            let iter = LineIter::new(self.line_terminator.as_byte(), reader.buffer());
+            {
+                for line in iter {
+                    let mut s: Vec<Vec<&[u8]>> = shuffler;
+                    self.line_parser.parse_line(
+                        lines::without_terminator(&line, self.line_terminator),
+                        &mut s,
+                    );
 
-        // let mut reader = BufReader::with_capacity(64 * (1 << 10), reader);
-        // let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
-        // let mut line = vec![];
-        // while reader.read_until(b'\n', &mut line)? > 0 {
-        //     let mut s: Vec<Vec<&[u8]>> = shuffler;
-        //     self.line_parser
-        //         .parse_line(lines::without_terminator(&line, terminator), &mut s);
-        //     self.join_appender(s.iter_mut().flat_map(|s| s.drain(..)))
-        //         .unwrap();
-        //     shuffler = unsafe { core::mem::transmute(s) };
-        //     line.clear();
-        // }
+                    let items = s.iter_mut().flat_map(|s| s.drain(..));
+                    output.join_append(self.output_delimiter, items, &self.line_terminator)?;
+                    shuffler = unsafe { core::mem::transmute(s) };
+                }
+            }
+            reader.consume(reader.buffer().len());
+        }
+        Ok(())
+    }
+}
+
+trait JoinAppend {
+    fn join_append<'b>(
+        &mut self,
+        sep: &[u8],
+        items: impl Iterator<Item = &'b [u8]>,
+        term: &LineTerminator,
+    ) -> Result<(), io::Error>;
+}
+
+impl<W: Write> JoinAppend for W {
+    #[inline(always)]
+    fn join_append<'b>(
+        &mut self,
+        sep: &[u8],
+        mut items: impl Iterator<Item = &'b [u8]>,
+        term: &LineTerminator,
+    ) -> Result<(), io::Error> {
+        if let Some(item) = items.next() {
+            self.write_all(item)?;
+        }
+
+        for item in items {
+            self.write_all(sep)?;
+            self.write_all(item)?;
+        }
+        self.write_all(term.as_bytes())?;
         Ok(())
     }
 }

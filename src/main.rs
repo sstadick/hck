@@ -249,21 +249,25 @@ fn run<W: Write>(input: HckInput<PathBuf>, writer: &mut W, opts: &Opts) -> Resul
     match &delim {
         RegexOrStr::Regex(regex) => {
             let mut core = Core::new(
+                &opts.delimiter.as_bytes(),
                 &opts.output_delimiter.as_bytes(),
                 &fields,
                 RegexLineParser::new(&fields, &regex),
                 LineTerminator::default(),
                 mmap,
+                false,
             );
             core.hck_input(input, writer, extra)?;
         }
         RegexOrStr::Str(s) => {
             let mut core = Core::new(
+                &opts.delimiter.as_bytes(),
                 &opts.output_delimiter.as_bytes(),
                 &fields,
-                SubStrLineParser::new(&fields, &opts.delimiter.as_bytes()),
+                SubStrLineParser::new(&fields, s.as_bytes()),
                 LineTerminator::default(),
                 mmap,
+                true,
             );
             core.hck_input(input, writer, extra)?;
         }

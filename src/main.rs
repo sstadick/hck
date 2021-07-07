@@ -293,6 +293,8 @@ fn run<W: Write>(
 #[cfg(test)]
 mod test {
 
+    use std::io::BufReader;
+
     use super::*;
     use bstr::io::BufReadExt;
     use rstest::rstest;

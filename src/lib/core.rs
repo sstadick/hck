@@ -352,7 +352,6 @@ where
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
-        // let mut lb = self.line_buffer.borrow_mut();
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
         let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
         while reader.fill().unwrap() {

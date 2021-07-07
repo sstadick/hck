@@ -29,12 +29,19 @@ It is meant to be simple and easy to use while exploring datasets.
 With the Rust toolchain:
 
 ```bash
+export RUSTFLAGS='-C target-cpu=native'
 cargo install hck
 ```
 
 From the [releases page](https://github.com/sstadick/hck/releases)
 
 ## Examples
+
+### Splitting with a substr delmiter
+
+```bash
+ps aux | hck -d, -f1-3,5-
+```
 
 ### Splitting with a regex delimiter
 

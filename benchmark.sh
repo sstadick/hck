@@ -9,6 +9,7 @@ cp "${test_data}" ./hyper_data.txt
 hyperfine --warmup 3 -m 5 --export-markdown single_char.md --show-output \
     'hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null' \
     'hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null' \
+    'choose -f ',' -i ./hyper_data.txt 0 7 18  > /dev/null' \
     "tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null" \
     "xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null" \
     "awk -F, '{print \$1, \$8, \$19}' ./hyper_data.txt > /dev/null" \
@@ -24,6 +25,8 @@ hyperfine --warmup 3 -m 5 --export-markdown multi_char.md --show-output \
     "hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
     "hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null" \
     "hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null" \
+    "choose -f '\s+' -i ./hyper_data.txt 0 7 18  > /dev/null" \
+    "choose -f '   ' -i ./hyper_data.txt 0 7 18  > /dev/null" \
     "awk -F' ' '{print \$1, \$8 \$19}' ./hyper_data_multichar.txt > /dev/null" \
     "awk -F'   ' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \
     "awk -F'[:space:]+' '{print \$1, \$8, \$19}' ./hyper_data_multichar.txt > /dev/null" \

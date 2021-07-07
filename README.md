@@ -130,38 +130,45 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 `xsv`:
   - https://github.com/BurntSushi/xsv
-  - v0.13.0 (compiled locally with optimations)
+  - v0.13.0 (compiled locally with optimizations)
 
 `tsv-utils`:
   - https://github.com/eBay/tsv-utils
   - v2.2.0 (ldc2, compiled locally with optimizations)
 
+`choose`:
+  - https://github.com/theryangeary/choose
+  - v1.3.1 (compiled locally with optimizations)
+
 ### Single character delimiter benchmark
 
 | Command                                                      |      Mean [s] | Min [s] | Max [s] |    Relative |
 | :----------------------------------------------------------- | ------------: | ------: | ------: | ----------: |
-| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.590 ± 0.004 |   1.587 |   1.595 |        1.00 |
-| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.674 ± 0.006 |   1.668 |   1.683 | 1.05 ± 0.00 |
-| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.766 ± 0.004 |   1.760 |   1.770 | 1.11 ± 0.00 |
-| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.540 ± 0.083 |   5.477 |   5.635 | 3.48 ± 0.05 |
-| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.034 ± 0.100 |   4.955 |   5.195 | 3.17 ± 0.06 |
-| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.971 ± 0.566 |   6.693 |   7.983 | 4.38 ± 0.36 |
+| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.508 ± 0.006 |   1.500 |   1.514 |        1.00 |
+| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.709 ± 0.018 |   1.697 |   1.740 | 1.13 ± 0.01 |
+| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.740 ± 0.009 |   1.734 |   1.755 | 1.15 ± 0.01 |
+| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.620 ± 0.006 |   5.613 |   5.628 | 3.73 ± 0.02 |
+| `choose -f , -i ./hyper_data.txt 0 7 18  > /dev/null`        | 4.420 ± 0.040 |   4.392 |   4.492 | 2.93 ± 0.03 |
+| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 4.993 ± 0.049 |   4.953 |   5.078 | 3.31 ± 0.04 |
+| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.783 ± 0.010 |   6.767 |   6.794 | 4.50 ± 0.02 |  |
 
 ### Multi-character delimiter benchmark
 
-| Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |    Relative |
-| :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | ----------: |
-| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                             |  1.905 ± 0.013 |   1.885 |   1.921 |        1.00 |
-| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                   |  2.203 ± 0.022 |   2.173 |   2.226 | 1.16 ± 0.01 |
-| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 11.314 ± 0.167 |  11.083 |  11.436 | 5.94 ± 0.10 |
-| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    | 11.434 ± 0.010 |  11.427 |  11.449 | 6.00 ± 0.04 |
-| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.460 ± 0.007 |   6.450 |   6.470 | 3.39 ± 0.02 |
-| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.837 ± 0.086 |   5.738 |   5.920 | 3.06 ± 0.05 |
-| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.700 ± 0.075 |  10.583 |  10.791 | 5.62 ± 0.06 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.522 ± 0.137 |   7.333 |   7.709 | 3.95 ± 0.08 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.866 ± 0.090 |   6.770 |   6.997 | 3.61 ± 0.05 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -d' ' -f1,8,19 > /dev/null`                                 |  6.269 ± 0.124 |   6.060 |   6.386 | 3.29 ± 0.07 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.270 ± 0.145 |   6.037 |   6.396 | 3.29 ± 0.08 |
+| Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |     Relative |
+| :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | -----------: |
+| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                             |  2.053 ± 0.010 |   2.036 |   2.061 |         1.00 |
+| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                   |  2.352 ± 0.012 |   2.337 |   2.369 |  1.15 ± 0.01 |
+| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 11.895 ± 0.008 |  11.885 |  11.905 |  5.79 ± 0.03 |
+| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    | 12.212 ± 0.017 |  12.193 |  12.233 |  5.95 ± 0.03 |
+| `choose -f '\s+' -i ./hyper_data.txt 0 7 18  > /dev/null`                                                  | 59.118 ± 0.087 |  59.009 |  59.248 | 28.80 ± 0.15 |
+| `choose -f '   ' -i ./hyper_data.txt 0 7 18  > /dev/null`                                                  |  3.205 ± 0.018 |   3.180 |   3.229 |  1.56 ± 0.01 |
+| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.616 ± 0.028 |   6.578 |   6.653 |  3.22 ± 0.02 |
+| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.916 ± 0.159 |   5.790 |   6.194 |  2.88 ± 0.08 |
+| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.941 ± 0.228 |  10.604 |  11.174 |  5.33 ± 0.11 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.526 ± 0.162 |   7.363 |   7.765 |  3.67 ± 0.08 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.775 ± 0.084 |   6.672 |   6.900 |  3.30 ± 0.04 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -Ld' ' -f1,8,19 > /dev/null`                                |  6.149 ± 0.156 |   6.031 |   6.351 |  3.00 ± 0.08 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.227 ± 0.204 |   6.019 |   6.476 |  3.03 ± 0.10 |
 
 ## TODO
 
@@ -173,6 +180,7 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Move tests from main to core
 - Add more tests all around
 - Add preprocessor / pigz support
+- Add a greedy/non-greedy option that will ignore blank fields `split.filter(|s| !s.is_empty() || config.opt.non_greedy)`
 - Implement parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## Questions

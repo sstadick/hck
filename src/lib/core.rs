@@ -138,6 +138,12 @@ impl<'a> CoreConfigBuilder<'a> {
     }
 }
 
+impl<'a> Default for CoreConfigBuilder<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The main processing loop
 pub struct Core<'a, L> {
     /// The [`CoreConfig`] object that determines how [`Core`] is run

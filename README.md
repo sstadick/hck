@@ -140,28 +140,28 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 | Command                                                      |      Mean [s] | Min [s] | Max [s] |    Relative |
 | :----------------------------------------------------------- | ------------: | ------: | ------: | ----------: |
-| `hck -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 1.526 ± 0.007 |   1.519 |   1.537 |        1.00 |
-| `hck -d, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`    | 1.754 ± 0.003 |   1.752 |   1.759 | 1.15 ± 0.01 |
-| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.811 ± 0.003 |   1.807 |   1.814 | 1.19 ± 0.01 |
-| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.779 ± 0.008 |   5.769 |   5.789 | 3.79 ± 0.02 |
-| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.147 ± 0.061 |   5.093 |   5.249 | 3.37 ± 0.04 |
-| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 7.053 ± 0.025 |   7.018 |   7.081 | 4.62 ± 0.03 |
+| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.590 ± 0.004 |   1.587 |   1.595 |        1.00 |
+| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.674 ± 0.006 |   1.668 |   1.683 | 1.05 ± 0.00 |
+| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.766 ± 0.004 |   1.760 |   1.770 | 1.11 ± 0.00 |
+| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.540 ± 0.083 |   5.477 |   5.635 | 3.48 ± 0.05 |
+| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.034 ± 0.100 |   4.955 |   5.195 | 3.17 ± 0.06 |
+| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.971 ± 0.566 |   6.693 |   7.983 | 4.38 ± 0.36 |
 
 ### Multi-character delimiter benchmark
 
 | Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |    Relative |
 | :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | ----------: |
-| `hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              |  2.310 ± 0.007 |   2.301 |   2.315 |        1.00 |
-| `hck -d'\s+' -f1,8,19 -R ./hyper_data_multichar.txt > /dev/null`                                           | 11.456 ± 0.012 |  11.437 |  11.467 | 4.96 ± 0.01 |
-| `hck -d'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    |  2.616 ± 0.011 |   2.600 |   2.629 | 1.13 ± 0.01 |
-| `hck -d'\s+' -f1,8,19 --no-mmap -R ./hyper_data_multichar.txt > /dev/null`                                 | 11.944 ± 0.165 |  11.761 |  12.091 | 5.17 ± 0.07 |
-| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.483 ± 0.093 |   6.433 |   6.649 | 2.81 ± 0.04 |
-| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.672 ± 0.128 |   5.555 |   5.870 | 2.46 ± 0.06 |
-| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.245 ± 0.050 |  10.166 |  10.303 | 4.44 ± 0.02 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.302 ± 0.131 |   7.193 |   7.529 | 3.16 ± 0.06 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.687 ± 0.234 |   6.288 |   6.908 | 2.90 ± 0.10 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -d' ' -f1,8,19 > /dev/null`                                 |  6.058 ± 0.036 |   6.027 |   6.117 | 2.62 ± 0.02 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.158 ± 0.023 |   6.139 |   6.187 | 2.67 ± 0.01 |
+| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                             |  1.905 ± 0.013 |   1.885 |   1.921 |        1.00 |
+| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                   |  2.203 ± 0.022 |   2.173 |   2.226 | 1.16 ± 0.01 |
+| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 11.314 ± 0.167 |  11.083 |  11.436 | 5.94 ± 0.10 |
+| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    | 11.434 ± 0.010 |  11.427 |  11.449 | 6.00 ± 0.04 |
+| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.460 ± 0.007 |   6.450 |   6.470 | 3.39 ± 0.02 |
+| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.837 ± 0.086 |   5.738 |   5.920 | 3.06 ± 0.05 |
+| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.700 ± 0.075 |  10.583 |  10.791 | 5.62 ± 0.06 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.522 ± 0.137 |   7.333 |   7.709 | 3.95 ± 0.08 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.866 ± 0.090 |   6.770 |   6.997 | 3.61 ± 0.05 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -d' ' -f1,8,19 > /dev/null`                                 |  6.269 ± 0.124 |   6.060 |   6.386 | 3.29 ± 0.07 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.270 ± 0.145 |   6.037 |   6.396 | 3.29 ± 0.08 |
 
 ## TODO
 

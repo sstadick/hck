@@ -134,6 +134,7 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 - Add complement argument
 - Don't reparse fields / headers for each new file
+- figure out how to better reuse / share a vec
 - Allow for two runmodes - buffered or mmap, configure similar to how ripgrep does it (care for the -z option as well)
 - Bake in grep / filtering somehow?
 - Move tests from main to core

@@ -37,40 +37,67 @@ From the [releases page](https://github.com/sstadick/hck/releases)
 
 ## Examples
 
-### Splitting with a substr delmiter
+### Splitting with a string literal
 
 ```bash
-hck -d'\t' -f1-3,5- my.tsv
+❯ hck -Ld' ' -f1-3,5- ./README.md | head -n4
+#       🪓      hck
+
+<p      align="center">
+                <a      src="https://github.com/sstadick/hck/workflows/Check/badge.svg" alt="Build      Status"></a>
 ```
 
 ### Splitting with a regex delimiter
 
 ```bash
-ps aux | hck -d'\s+' -R -f1-3,5-
+# note, '\s+' is the default
+❯ ps aux | hck -f1-3,5- | head -n4
+USER    PID     %CPU    VSZ     RSS     TTY     STAT    START   TIME    COMMAND
+root    1       0.0     169452  13472   ?       Ss      Jun21   0:19    /sbin/init      splash
+root    2       0.0     0       0       ?       S       Jun21   0:00    [kthreadd]
+root    3       0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
 ```
 
 ### Reordering output columns
 
 ```bash
-ps aux | hck -d'\s+' -R -f2,1,3-
+❯ ps aux | hck -f2,1,3- | head -n4
+PID     USER    %CPU    %MEM    VSZ     RSS     TTY     STAT    START   TIME    COMMAND
+1       root    0.0     0.0     169452  13472   ?       Ss      Jun21   0:19    /sbin/init      splash
+2       root    0.0     0.0     0       0       ?       S       Jun21   0:00    [kthreadd]
+3       root    0.0     0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
 ```
 
 ### Changing the output record separator
 
 ```bash
-ps aux | hck -d'\s+' -R -D'___' -f2,1,3-
+❯ ps aux | hck -D'___' -f2,1,3 | head -n4
+PID___USER___%CPU
+1___root___0.0
+2___root___0.0
+3___root___0.0
 ```
 
 ### Select columns with regex
 
 ```bash
-hck -F 'is_new.*` -F'^[^_]' -r ./headered_data.tsv
+# Note the order match the order of the -F args
+ps aux | hck -r -F '^ST.*' -F '^USER$' | head -n4
+STAT    START   USER
+Ss      Jun21   root
+S       Jun21   root
+I<      Jun21   root
 ```
 
 ### Automagic decompresion
 
 ```bash
-hck -f1,3- -z ~/Downloads/massive.tsv.gz | rg 'cool_data'
+❯ gzip ./README.md
+❯ hck -Ld' ' -f1-3,5- -z ./README.md.gz | head -n4
+#       🪓      hck
+
+<p      align="center">
+                <a      src="https://github.com/sstadick/hck/workflows/Check/badge.svg" alt="Build      Status"></a>
 ```
 
 ## Benchmarks
@@ -146,6 +173,7 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Move tests from main to core
 - Add more tests all around
 - Add preprocessor / pigz support
+- Support indexing from the end
 - Implement parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## Questions
@@ -158,3 +186,4 @@ I've ripped the code out of the bstr line closure to go faster. The lifetime coe
 ## References
 
 - [rust-coreutils-cut](https://github.com/uutils/coreutils/blob/e48ff9dd9ee0d55da285f99d75f6169a5e4e7acc/src/uu/cut/src/cut.rs)
+- [ripgrep](https://github.com/BurntSushi/ripgrep/tree/master/crates/searcher)

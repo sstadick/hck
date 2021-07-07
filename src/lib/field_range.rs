@@ -25,6 +25,7 @@ pub enum FieldError {
     NoHeadersMatched,
 }
 
+#[derive(Debug)]
 pub enum RegexOrStr<'b> {
     Regex(Regex),
     Str(&'b str),

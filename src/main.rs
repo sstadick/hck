@@ -85,7 +85,7 @@ fn is_broken_pipe(err: &Error) -> bool {
 ///
 /// This tool behaves like unix `cut` with a few exceptions:
 ///
-/// * `delimiter` is a fixed substring by default, and a regex with `-R`
+/// * `delimiter` is a regex by default and a fixed substring with `-L`
 /// * `header-fields` allows for specifying a literal or a regex to match header names to select columns
 /// * both `header-fields` and `fields` order dictate the order of the output columns
 /// * input files (not stdin) are automatically compressed
@@ -123,14 +123,13 @@ struct Opts {
     #[structopt(short = "o", long)]
     output: Option<PathBuf>,
 
-    /// Delimiter to use on input files, this is a substring literal by default. To treat it as a regex add the
-    /// `-R` flag.
-    #[structopt(short = "d", long, default_value = "\t")]
+    /// Delimiter to use on input files, this is a substring literal by default. To treat it as a literal add the `-L` flag.
+    #[structopt(short = "d", long, default_value = r"\s+")]
     delimiter: String,
 
-    /// Treat the delimiter as a regex
-    #[structopt(short = "R", long)]
-    delim_is_regex: bool,
+    /// Treat the delimiter as a string literal. This can significantly improve performance, especially for single byte delimiters.
+    #[structopt(short = "L", long)]
+    delim_is_literal: bool,
 
     /// Delimiter string to use on outputs
     #[structopt(short = "D", long, default_value = "\t")]
@@ -201,7 +200,7 @@ fn main() -> Result<()> {
     conf_builder.mmap(mmap);
     conf_builder.delimiter(&opts.delimiter.as_bytes());
     conf_builder.output_delimiter(&opts.output_delimiter.as_bytes());
-    conf_builder.is_regex_parser(opts.delim_is_regex);
+    conf_builder.is_regex_parser(!opts.delim_is_literal);
     conf_builder.try_decompress(opts.try_decompress);
     let conf = conf_builder.build();
 
@@ -311,9 +310,8 @@ mod test {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
-            // delimiter: String::from(r"\s+"),
             delimiter: delimiter.to_string(),
-            delim_is_regex: true,
+            delim_is_literal: false,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
@@ -335,9 +333,8 @@ mod test {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
-            // delimiter: String::from(FOURSPACE),
             delimiter: delimiter.to_string(),
-            delim_is_regex: false,
+            delim_is_literal: true,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
@@ -378,7 +375,7 @@ mod test {
     fn run_wrapper<P: AsRef<Path>>(input: P, output: P, opts: &Opts) {
         let conf = CoreConfigBuilder::new()
             .delimiter(opts.delimiter.as_bytes())
-            .is_regex_parser(opts.delim_is_regex)
+            .is_regex_parser(!opts.delim_is_literal)
             .mmap(if opts.no_mmap {
                 MmapChoice::never()
             } else {

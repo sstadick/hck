@@ -146,6 +146,8 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Bake in grep / filtering somehow?
 - Move tests from main to core
 - Add more tests all around
+- Add preprocessor / pigz support
+- Implement parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## Questions
 

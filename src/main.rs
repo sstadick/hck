@@ -163,8 +163,7 @@ struct Opts {
 }
 
 fn main() -> Result<()> {
-    // TODO: move tests / add more tests / test mmap functions
-    // TODO: any reason not to have mmap as Auto by default?
+    // TODO: move tests / add more tests
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
 

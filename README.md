@@ -22,6 +22,7 @@ It is meant to be simple and easy to use while exploring datasets.
 - Specification of output delimiter
 - Selection of columns by header string literal with the `-F` option, or by regex by setting the `-r` flag
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep)
+- Speed
 
 ## Install
 
@@ -95,11 +96,11 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 `xsv`:
   - https://github.com/BurntSushi/xsv
-  - v0.13.0
+  - v0.13.0 (compiled locally with optimations)
 
 `tsv-utils`:
   - https://github.com/eBay/tsv-utils
-  - v2.2.0 (ldc2)
+  - v2.2.0 (ldc2, compiled locally with optimizations)
 
 ### Single character delimiter benchmark
 
@@ -134,13 +135,9 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 - Add complement argument
 - Don't reparse fields / headers for each new file
 - Allow for two runmodes - buffered or mmap, configure similar to how ripgrep does it (care for the -z option as well)
-- Verify that ripgrep reallydoes use mmap pretty much always
-- Add a directio mode similar to mmap mode?
-- Add a heuristic if using single byte delimiters to use memchr2 to look for newlines and delims at the same time and 'annotate' the line accordingly. Should save one pass over the data.
 - Bake in grep somehow?
 - Move tests from main to core
 - Add more tests all around
-- Think about adding a full on sync mode
 
 ## Questions
 

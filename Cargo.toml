@@ -26,18 +26,14 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.41"
 bstr = "0.2.16"
-env = "0.0.0"
 env_logger = "0.8.4"
 grep-cli = "0.1.6"
-grep-searcher = "0.1.7"
 lazy_static = "1.4.0"
 log = "0.4.14"
-object-pool = "0.5.4"
 regex = "1.5.4"
 structopt = {version = "0.3.21", features = ["default"]}
 termcolor = "1.1.2"
 thiserror = "1.0.25"
-vec-utils = "0.3.0"
 ripline = "0.1"
 memmap = { package = "memmap2", version = "0.2.0" }
 memchr = "2.4.0"

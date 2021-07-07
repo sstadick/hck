@@ -175,13 +175,28 @@ where
         }
     }
 
+    /// Check if no reordering of fields is happening
+    #[inline]
+    fn are_fields_pos_sorted(&self) -> bool {
+        let mut test = 0;
+        for field in self.fields {
+            if field.pos < test {
+                return false;
+            }
+            test = field.pos
+        }
+        true
+    }
+
     /// Check if we can run in `fast mode`.
     ///
     /// delimiter is 1 byte, newline is 1 bytes, and we are not using a regex
     fn allow_fastmode(&self) -> bool {
+        // false
         self.config.delimiter.len() == 1
             && self.config.line_terminator.as_bytes().len() == 1
             && !self.config.is_parser_regex
+            && self.are_fields_pos_sorted()
     }
 
     pub fn hck_input<P, W>(
@@ -278,17 +293,20 @@ where
 
         let mut line = vec![];
         let mut start = 0;
-
         for index in iter {
             if bytes[index] == sep {
                 line.push((start, index - 1));
                 start = index + 1;
             } else if bytes[index] == newline {
+                line.push((start, index - 1));
                 let items = self.fields.iter().flat_map(|f| {
-                    line[f.low..=min(f.high, line.len() - 1)]
-                        .iter()
-                        .map(|(start, stop)| &bytes[*start..=*stop])
+                    let slice = line
+                        .get(f.low..=min(f.high, line.len().saturating_sub(1)))
+                        .unwrap_or(&[]);
+                    // .unwrap_or(&[]);
+                    slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                 });
+
                 output.join_append(
                     self.config.output_delimiter,
                     items,
@@ -330,10 +348,13 @@ where
                     line.push((start, index - 1));
                     start = index + 1;
                 } else if bytes[index] == newline {
+                    line.push((start, index - 1));
                     let items = self.fields.iter().flat_map(|f| {
-                        line[f.low..=min(f.high, line.len() - 1)]
-                            .iter()
-                            .map(|(start, stop)| &bytes[*start..=*stop])
+                        let slice = line
+                            .get(f.low..=min(f.high, line.len().saturating_sub(1)))
+                            .unwrap_or(&[]);
+                        // .unwrap_or(&[]);
+                        slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                     });
                     output.join_append(
                         self.config.output_delimiter,

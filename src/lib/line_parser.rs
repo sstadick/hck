@@ -104,6 +104,8 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
                         // Guaranteed to be in range since staging is created based on field pos anyways
                         if let Some(reshuffled_range) = shuffler.get_mut(pos) {
                             reshuffled_range.push(part)
+                        } else {
+                            unreachable!()
                         }
                     }
                     None => break,

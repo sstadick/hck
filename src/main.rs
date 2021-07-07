@@ -85,7 +85,7 @@ fn is_broken_pipe(err: &Error) -> bool {
 ///
 /// This tool behaves like unix `cut` with a few exceptions:
 ///
-/// * `delimiter` is a fixed substring by default, and a regex with `-R`
+/// * `delimiter` is a regex by default and a fixed substring with `-L`
 /// * `header-fields` allows for specifying a literal or a regex to match header names to select columns
 /// * both `header-fields` and `fields` order dictate the order of the output columns
 /// * input files (not stdin) are automatically compressed
@@ -123,14 +123,13 @@ struct Opts {
     #[structopt(short = "o", long)]
     output: Option<PathBuf>,
 
-    /// Delimiter to use on input files, this is a substring literal by default. To treat it as a regex add the
-    /// `-R` flag.
-    #[structopt(short = "d", long, default_value = "\t")]
+    /// Delimiter to use on input files, this is a substring literal by default. To treat it as a literal add the `-L` flag.
+    #[structopt(short = "d", long, default_value = r"\s+")]
     delimiter: String,
 
-    /// Treat the delimiter as a regex
-    #[structopt(short = "R", long)]
-    delim_is_regex: bool,
+    /// Treat the delimiter as a string literal. This can significantly improve performance, especially for single byte delimiters.
+    #[structopt(short = "L", long)]
+    delim_is_literal: bool,
 
     /// Delimiter string to use on outputs
     #[structopt(short = "D", long, default_value = "\t")]
@@ -201,7 +200,7 @@ fn main() -> Result<()> {
     conf_builder.mmap(mmap);
     conf_builder.delimiter(&opts.delimiter.as_bytes());
     conf_builder.output_delimiter(&opts.output_delimiter.as_bytes());
-    conf_builder.is_regex_parser(opts.delim_is_regex);
+    conf_builder.is_regex_parser(!opts.delim_is_literal);
     conf_builder.try_decompress(opts.try_decompress);
     let conf = conf_builder.build();
 
@@ -306,12 +305,13 @@ mod test {
         output_file: impl AsRef<Path>,
         fields: &str,
         no_mmap: bool,
+        delimiter: &str,
     ) -> Opts {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
-            delimiter: String::from(r"\s+"),
-            delim_is_regex: true,
+            delimiter: delimiter.to_string(),
+            delim_is_literal: false,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
@@ -328,12 +328,13 @@ mod test {
         output_file: impl AsRef<Path>,
         fields: &str,
         no_mmap: bool,
+        delimiter: &str,
     ) -> Opts {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
             output: Some(output_file.as_ref().to_path_buf()),
-            delimiter: String::from(FOURSPACE),
-            delim_is_regex: false,
+            delimiter: delimiter.to_string(),
+            delim_is_literal: true,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
             header_fields: None,
@@ -374,7 +375,7 @@ mod test {
     fn run_wrapper<P: AsRef<Path>>(input: P, output: P, opts: &Opts) {
         let conf = CoreConfigBuilder::new()
             .delimiter(opts.delimiter.as_bytes())
-            .is_regex_parser(opts.delim_is_regex)
+            .is_regex_parser(!opts.delim_is_literal)
             .mmap(if opts.no_mmap {
                 MmapChoice::never()
             } else {
@@ -398,16 +399,19 @@ mod test {
 
     #[rstest]
     #[rustfmt::skip::macros(vec)]
-    fn test_read_single_values(#[values(true, false)] no_mmap: bool) {
+    fn test_read_single_values(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "1", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "1", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c"],
             vec!["1", "2", "3"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -415,11 +419,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_several_single_values(#[values(true, false)] no_mmap: bool) {
+    fn test_read_several_single_values(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "1,3", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "1,3", no_mmap, hck_delim);
         let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
         write_file(&input_file, data, FOURSPACE);
         run_wrapper(&input_file, &output_file, &opts);
@@ -429,11 +436,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_several_single_values_with_invalid_utf8(#[values(true, false)] no_mmap: bool) {
+    fn test_read_several_single_values_with_invalid_utf8(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "1,3", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "1,3", no_mmap, hck_delim);
         let bad_str = unsafe { String::from_utf8_unchecked(b"a\xED\xA0\x80z".to_vec()) };
         let data = vec![vec![bad_str.as_str(), "b", "c"], vec!["1", "2", "3"]];
         write_file(&input_file, data, FOURSPACE);
@@ -444,11 +454,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_single_range(#[values(true, false)] no_mmap: bool) {
+    fn test_read_single_range(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2-", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "2-", no_mmap, hck_delim);
         let data = vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]];
         write_file(&input_file, data, FOURSPACE);
         run_wrapper(&input_file, &output_file, &opts);
@@ -458,11 +471,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_serveral_range(#[values(true, false)] no_mmap: bool) {
+    fn test_read_serveral_range(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2-4,6-", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "2-4,6-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -478,11 +494,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_mixed_fields1(#[values(true, false)] no_mmap: bool) {
+    fn test_read_mixed_fields1(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "2,4-", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "2,4-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -498,11 +517,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_mixed_fields2(#[values(true, false)] no_mmap: bool) {
+    fn test_read_mixed_fields2(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,7", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "-4,7", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -518,11 +540,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_no_delimis_found(#[values(true, false)] no_mmap: bool) {
+    fn test_read_no_delimis_found(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,7", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "-4,7", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -537,11 +562,11 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_over_end(#[values(true, false)] no_mmap: bool) {
+    fn test_read_over_end(#[values(true, false)] no_mmap: bool, #[values(r"\s+")] hck_delim: &str) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "-4,8,11-", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "-4,8,11-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -558,11 +583,11 @@ mod test {
     }
 
     #[rstest]
-    fn test_reorder1(#[values(true, false)] no_mmap: bool) {
+    fn test_reorder1(#[values(true, false)] no_mmap: bool, #[values(r"\s+")] hck_delim: &str) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts(&input_file, &output_file, "6,-4", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "6,-4", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -579,12 +604,12 @@ mod test {
     }
 
     #[rstest]
-    fn test_reorder2(#[values(true, false)] no_mmap: bool) {
+    fn test_reorder2(#[values(true, false)] no_mmap: bool, #[values(r"\s+")] hck_delim: &str) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
         // 4-5 should not be repeated at the end and only written once.
-        let opts = build_opts(&input_file, &output_file, "3-,1,4-5", no_mmap);
+        let opts = build_opts(&input_file, &output_file, "3-,1,4-5", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -605,16 +630,19 @@ mod test {
 
     #[rstest]
     #[rustfmt::skip::macros(vec)]
-    fn test_read_single_values_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_single_values_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "1", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "1", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c"],
             vec!["1", "2", "3"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -622,13 +650,16 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_several_single_values_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_several_single_values_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "1,3", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "1,3", no_mmap, hck_delim);
         let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -638,14 +669,15 @@ mod test {
     #[rstest]
     fn test_read_several_single_values_with_invalid_utf8_not_regex(
         #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
     ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "1,3", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "1,3", no_mmap, hck_delim);
         let bad_str = unsafe { String::from_utf8_unchecked(b"a\xED\xA0\x80z".to_vec()) };
         let data = vec![vec![bad_str.as_str(), "b", "c"], vec!["1", "2", "3"]];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -653,13 +685,16 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_single_range_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_single_range_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "2-", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "2-", no_mmap, hck_delim);
         let data = vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -667,16 +702,19 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_serveral_range_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_serveral_range_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "2-4,6-", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "2-4,6-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -687,16 +725,19 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_mixed_fields1_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_mixed_fields1_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "2,4-", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "2,4-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -707,16 +748,19 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_mixed_fields2_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_mixed_fields2_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "-4,7", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "-4,7", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -727,11 +771,14 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_no_delimis_found_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_no_delimis_found_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "-4,7", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "-4,7", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
@@ -746,16 +793,19 @@ mod test {
     }
 
     #[rstest]
-    fn test_read_over_end_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_read_over_end_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "-4,8,11-", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "-4,8,11-", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -767,16 +817,19 @@ mod test {
     }
 
     #[rstest]
-    fn test_reorder1_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_reorder1_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
-        let opts = build_opts_not_regex(&input_file, &output_file, "6,-4", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "6,-4", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -788,17 +841,20 @@ mod test {
     }
 
     #[rstest]
-    fn test_reorder2_not_regex(#[values(true, false)] no_mmap: bool) {
+    fn test_reorder2_not_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
         let tmp = TempDir::new().unwrap();
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
         // 4-5 should not be repeated at the end and only written once.
-        let opts = build_opts_not_regex(&input_file, &output_file, "3-,1,4-5", no_mmap);
+        let opts = build_opts_not_regex(&input_file, &output_file, "3-,1,4-5", no_mmap, hck_delim);
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f", "g"],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
-        write_file(&input_file, data, FOURSPACE);
+        write_file(&input_file, data, hck_delim);
         run_wrapper(&input_file, &output_file, &opts);
         let filtered = read_tsv(output_file);
 
@@ -808,6 +864,114 @@ mod test {
             vec![
                 vec!["c", "d", "e", "f", "g", "a"],
                 vec!["3", "4", "5", "6", "7", "1"]
+            ]
+        );
+    }
+
+    /// Tests from users
+    #[rstest]
+    fn test_reorder_no_split_found(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts_not_regex(&input_file, &output_file, "3-,1,4-5", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, "-");
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(filtered, vec![vec!["a-b-c-d-e-f-g"], vec!["1-2-3-4-5-6-7"]]);
+    }
+
+    /// Tests from users
+    #[rstest]
+    fn test_reorder_no_split_found_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "3-,1,4-5", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, "---");
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["a---b---c---d---e---f---g"],
+                vec!["1---2---3---4---5---6---7"]
+            ]
+        );
+    }
+
+    #[rstest]
+    fn test_issue_12_with_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "2,3,4-", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, "  ");
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["b", "c", "d", "e", "f", "g"],
+                vec!["2", "3", "4", "5", "6", "7"]
+            ]
+        );
+    }
+
+    #[rstest]
+    fn test_issue_12_no_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "2,3,4-", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["b", "c", "d", "e", "f", "g"],
+                vec!["2", "3", "4", "5", "6", "7"]
             ]
         );
     }

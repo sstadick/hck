@@ -37,40 +37,67 @@ From the [releases page](https://github.com/sstadick/hck/releases)
 
 ## Examples
 
-### Splitting with a substr delmiter
+### Splitting with a string literal
 
 ```bash
-ps aux | hck -d, -f1-3,5-
+❯ hck -Ld' ' -f1-3,5- ./README.md | head -n4
+#       🪓      hck
+
+<p      align="center">
+                <a      src="https://github.com/sstadick/hck/workflows/Check/badge.svg" alt="Build      Status"></a>
 ```
 
 ### Splitting with a regex delimiter
 
 ```bash
-ps aux | hck -d'\s+' -R -f1-3,5-
+# note, '\s+' is the default
+❯ ps aux | hck -f1-3,5- | head -n4
+USER    PID     %CPU    VSZ     RSS     TTY     STAT    START   TIME    COMMAND
+root    1       0.0     169452  13472   ?       Ss      Jun21   0:19    /sbin/init      splash
+root    2       0.0     0       0       ?       S       Jun21   0:00    [kthreadd]
+root    3       0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
 ```
 
 ### Reordering output columns
 
 ```bash
-ps aux | hck -d'\s+' -R -f2,1,3-
+❯ ps aux | hck -f2,1,3- | head -n4
+PID     USER    %CPU    %MEM    VSZ     RSS     TTY     STAT    START   TIME    COMMAND
+1       root    0.0     0.0     169452  13472   ?       Ss      Jun21   0:19    /sbin/init      splash
+2       root    0.0     0.0     0       0       ?       S       Jun21   0:00    [kthreadd]
+3       root    0.0     0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
 ```
 
 ### Changing the output record separator
 
 ```bash
-ps aux | hck -d'\s+' -R -D'___' -f2,1,3-
+❯ ps aux | hck -D'___' -f2,1,3 | head -n4
+PID___USER___%CPU
+1___root___0.0
+2___root___0.0
+3___root___0.0
 ```
 
 ### Select columns with regex
 
 ```bash
-hck -F 'is_new.*` -F'^[^_]' -r ./headered_data.tsv
+# Note the order match the order of the -F args
+ps aux | hck -r -F '^ST.*' -F '^USER$' | head -n4
+STAT    START   USER
+Ss      Jun21   root
+S       Jun21   root
+I<      Jun21   root
 ```
 
 ### Automagic decompresion
 
 ```bash
-hck -f1,3- -z ~/Downloads/massive.tsv.gz | rg 'cool_data'
+❯ gzip ./README.md
+❯ hck -Ld' ' -f1-3,5- -z ./README.md.gz | head -n4
+#       🪓      hck
+
+<p      align="center">
+                <a      src="https://github.com/sstadick/hck/workflows/Check/badge.svg" alt="Build      Status"></a>
 ```
 
 ## Benchmarks
@@ -113,36 +140,35 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 | Command                                                      |      Mean [s] | Min [s] | Max [s] |    Relative |
 | :----------------------------------------------------------- | ------------: | ------: | ------: | ----------: |
-| `hck -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 1.526 ± 0.007 |   1.519 |   1.537 |        1.00 |
-| `hck -d, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`    | 1.754 ± 0.003 |   1.752 |   1.759 | 1.15 ± 0.01 |
-| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.811 ± 0.003 |   1.807 |   1.814 | 1.19 ± 0.01 |
-| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.779 ± 0.008 |   5.769 |   5.789 | 3.79 ± 0.02 |
-| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.147 ± 0.061 |   5.093 |   5.249 | 3.37 ± 0.04 |
-| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 7.053 ± 0.025 |   7.018 |   7.081 | 4.62 ± 0.03 |
-
+| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.590 ± 0.004 |   1.587 |   1.595 |        1.00 |
+| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.674 ± 0.006 |   1.668 |   1.683 | 1.05 ± 0.00 |
+| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.766 ± 0.004 |   1.760 |   1.770 | 1.11 ± 0.00 |
+| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.540 ± 0.083 |   5.477 |   5.635 | 3.48 ± 0.05 |
+| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.034 ± 0.100 |   4.955 |   5.195 | 3.17 ± 0.06 |
+| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.971 ± 0.566 |   6.693 |   7.983 | 4.38 ± 0.36 |
 
 ### Multi-character delimiter benchmark
 
 | Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |    Relative |
 | :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | ----------: |
-| `hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              |  2.310 ± 0.007 |   2.301 |   2.315 |        1.00 |
-| `hck -d'\s+' -f1,8,19 -R ./hyper_data_multichar.txt > /dev/null`                                           | 11.456 ± 0.012 |  11.437 |  11.467 | 4.96 ± 0.01 |
-| `hck -d'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    |  2.616 ± 0.011 |   2.600 |   2.629 | 1.13 ± 0.01 |
-| `hck -d'\s+' -f1,8,19 --no-mmap -R ./hyper_data_multichar.txt > /dev/null`                                 | 11.944 ± 0.165 |  11.761 |  12.091 | 5.17 ± 0.07 |
-| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.483 ± 0.093 |   6.433 |   6.649 | 2.81 ± 0.04 |
-| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.672 ± 0.128 |   5.555 |   5.870 | 2.46 ± 0.06 |
-| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.245 ± 0.050 |  10.166 |  10.303 | 4.44 ± 0.02 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.302 ± 0.131 |   7.193 |   7.529 | 3.16 ± 0.06 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.687 ± 0.234 |   6.288 |   6.908 | 2.90 ± 0.10 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -d' ' -f1,8,19 > /dev/null`                                 |  6.058 ± 0.036 |   6.027 |   6.117 | 2.62 ± 0.02 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.158 ± 0.023 |   6.139 |   6.187 | 2.67 ± 0.01 |
+| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                             |  1.905 ± 0.013 |   1.885 |   1.921 |        1.00 |
+| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                   |  2.203 ± 0.022 |   2.173 |   2.226 | 1.16 ± 0.01 |
+| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 11.314 ± 0.167 |  11.083 |  11.436 | 5.94 ± 0.10 |
+| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    | 11.434 ± 0.010 |  11.427 |  11.449 | 6.00 ± 0.04 |
+| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.460 ± 0.007 |   6.450 |   6.470 | 3.39 ± 0.02 |
+| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.837 ± 0.086 |   5.738 |   5.920 | 3.06 ± 0.05 |
+| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.700 ± 0.075 |  10.583 |  10.791 | 5.62 ± 0.06 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.522 ± 0.137 |   7.333 |   7.709 | 3.95 ± 0.08 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.866 ± 0.090 |   6.770 |   6.997 | 3.61 ± 0.05 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -d' ' -f1,8,19 > /dev/null`                                 |  6.269 ± 0.124 |   6.060 |   6.386 | 3.29 ± 0.07 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.270 ± 0.145 |   6.037 |   6.396 | 3.29 ± 0.08 |
 
 ## TODO
 
 - Add complement argument
+- Support indexing from the end
 - Don't reparse fields / headers for each new file
 - figure out how to better reuse / share a vec
-- Allow for two runmodes - buffered or mmap, configure similar to how ripgrep does it (care for the -z option as well)
 - Bake in grep / filtering somehow?
 - Move tests from main to core
 - Add more tests all around
@@ -159,3 +185,4 @@ I've ripped the code out of the bstr line closure to go faster. The lifetime coe
 ## References
 
 - [rust-coreutils-cut](https://github.com/uutils/coreutils/blob/e48ff9dd9ee0d55da285f99d75f6169a5e4e7acc/src/uu/cut/src/cut.rs)
+- [ripgrep](https://github.com/BurntSushi/ripgrep/tree/master/crates/searcher)

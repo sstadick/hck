@@ -6,7 +6,6 @@
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{field_range::FieldRange, line_parser::LineParser, mmap::MmapChoice};
 use bstr::ByteSlice;
-use core::slice;
 use grep_cli::DecompressionReaderBuilder;
 use memchr;
 use ripline::{
@@ -176,14 +175,28 @@ where
         }
     }
 
+    /// Check if no reordering of fields is happening
+    #[inline]
+    fn are_fields_pos_sorted(&self) -> bool {
+        let mut test = 0;
+        for field in self.fields {
+            if field.pos < test {
+                return false;
+            }
+            test = field.pos
+        }
+        true
+    }
+
     /// Check if we can run in `fast mode`.
     ///
     /// delimiter is 1 byte, newline is 1 bytes, and we are not using a regex
     fn allow_fastmode(&self) -> bool {
-        false
-        // self.config.delimiter.len() == 1
-        //     && self.config.line_terminator.as_bytes().len() == 1
-        //     && !self.config.is_parser_regex
+        // false
+        self.config.delimiter.len() == 1
+            && self.config.line_terminator.as_bytes().len() == 1
+            && !self.config.is_parser_regex
+            && self.are_fields_pos_sorted()
     }
 
     pub fn hck_input<P, W>(
@@ -280,17 +293,12 @@ where
 
         let mut line = vec![];
         let mut start = 0;
-
         for index in iter {
             if bytes[index] == sep {
                 line.push((start, index - 1));
                 start = index + 1;
             } else if bytes[index] == newline {
-                // Special case when the user asked for the first field, and we haven't found
-                // any other fields, give back the whole line
-                if line.is_empty() {
-                    line.push((start, index - 1));
-                }
+                line.push((start, index - 1));
                 let items = self.fields.iter().flat_map(|f| {
                     let slice = line
                         .get(f.low..=min(f.high, line.len().saturating_sub(1)))
@@ -340,11 +348,7 @@ where
                     line.push((start, index - 1));
                     start = index + 1;
                 } else if bytes[index] == newline {
-                    // Special case when the user asked for the first field, and we haven't found
-                    // any other fields, give back the whole line
-                    if line.is_empty() {
-                        line.push((start, index - 1));
-                    }
+                    line.push((start, index - 1));
                     let items = self.fields.iter().flat_map(|f| {
                         let slice = line
                             .get(f.low..=min(f.high, line.len().saturating_sub(1)))

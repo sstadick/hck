@@ -922,4 +922,60 @@ mod test {
             ]
         );
     }
+
+    #[rstest]
+    fn test_issue_12_with_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "2,3,4-", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, "  ");
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["b", "c", "d", "e", "f", "g"],
+                vec!["2", "3", "4", "5", "6", "7"]
+            ]
+        );
+    }
+
+    #[rstest]
+    fn test_issue_12_no_regex(
+        #[values(true, false)] no_mmap: bool,
+        #[values("    ", " ")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        // 4-5 should not be repeated at the end and only written once.
+        let opts = build_opts(&input_file, &output_file, "2,3,4-", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![
+                vec!["b", "c", "d", "e", "f", "g"],
+                vec!["2", "3", "4", "5", "6", "7"]
+            ]
+        );
+    }
 }

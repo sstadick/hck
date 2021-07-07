@@ -40,7 +40,7 @@ impl<'b> RegexOrStr<'b> {
 }
 
 /// Represent a range of columns to keep.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone)]
 pub struct FieldRange {
     pub low: usize,
     pub high: usize,
@@ -185,8 +185,12 @@ impl FieldRange {
     pub fn post_process_ranges(ranges: &mut Vec<FieldRange>) {
         ranges.sort();
         // merge overlapping ranges
+        let mut shifted = 0;
         for i in 0..ranges.len() {
             let j = i + 1;
+            if let Some(rng) = ranges.get_mut(i) {
+                rng.pos -= shifted;
+            }
 
             while j < ranges.len()
                 && ranges[j].low <= ranges[i].high + 1
@@ -194,6 +198,7 @@ impl FieldRange {
             {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
+                shifted += 1;
             }
         }
     }
@@ -213,7 +218,8 @@ mod test {
     fn test_parse_fields_good() {
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0}], FieldRange::from_list("1").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: 3, pos: 1}], FieldRange::from_list("1,4").unwrap());
-        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 2}], FieldRange::from_list("1,2,4-").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 1}], FieldRange::from_list("1,2,4-").unwrap());
+        assert_eq!(vec![FieldRange { low: 1, high: 2, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 1} ], FieldRange::from_list("2,3,4-").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 0},  FieldRange { low: 3, high: usize::MAX - 1, pos: 1}], FieldRange::from_list("1,4-,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1},  FieldRange { low: 3, high: usize::MAX - 1, pos: 0}, FieldRange { low: 4, high: 7, pos: 2}], FieldRange::from_list("4-,1,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
@@ -250,7 +256,7 @@ mod test {
                 FieldRange {
                     low: 5,
                     high: 5,
-                    pos: 2 // pos 2 because it's the 3rd regex in header_fields
+                    pos: 1
                 }
             ],
             fields

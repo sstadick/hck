@@ -85,9 +85,12 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
         let mut parts = self.delimiter.split(line).peekable();
         let mut iterator_index = 0;
 
+        dbg!(self.field_ranges);
         // Iterate over our ranges and write any fields that are contained by them.
         for &FieldRange { low, high, pos } in self.field_ranges {
             // Advance up to low end of range
+            dbg!(low);
+            dbg!(iterator_index);
             if low > iterator_index {
                 match parts.nth(low - iterator_index - 1) {
                     Some(_part) => {
@@ -98,12 +101,15 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
             }
 
             // Advance through the range
+            dbg!(low, high);
             for _ in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
                         // Guaranteed to be in range since staging is created based on field pos anyways
                         if let Some(reshuffled_range) = shuffler.get_mut(pos) {
                             reshuffled_range.push(part)
+                        } else {
+                            unreachable!()
                         }
                     }
                     None => break,
@@ -111,5 +117,6 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
                 iterator_index += 1;
             }
         }
+        dbg!(shuffler);
     }
 }

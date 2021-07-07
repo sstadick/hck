@@ -9,6 +9,9 @@ use regex::bytes::Regex;
 use std::{cmp::max, str::FromStr};
 use thiserror::Error;
 
+/// The fartest right possible field
+const MAX: usize = usize::MAX;
+
 /// Errors for parsing / validating [`FieldRange`] strings.
 #[derive(Error, Debug)]
 pub enum FieldError {
@@ -50,8 +53,6 @@ impl FromStr for FieldRange {
 
     /// Convert a [`str`] into a [`FieldRange`]
     fn from_str(s: &str) -> Result<FieldRange, FieldError> {
-        const MAX: usize = usize::MAX;
-
         let mut parts = s.splitn(2, '-');
 
         match (parts.next(), parts.next()) {
@@ -122,6 +123,14 @@ impl FromStr for FieldRange {
 }
 
 impl FieldRange {
+    pub const fn default() -> Self {
+        Self {
+            low: 0,
+            high: MAX - 1,
+            pos: 0,
+        }
+    }
+
     /// Parse a comma separated list of fields and merge any overlaps
     pub fn from_list(list: &str) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges: Vec<FieldRange> = vec![];

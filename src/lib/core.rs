@@ -6,6 +6,7 @@
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{field_range::FieldRange, line_parser::LineParser, mmap::MmapChoice};
 use bstr::ByteSlice;
+use core::slice;
 use grep_cli::DecompressionReaderBuilder;
 use memchr;
 use ripline::{
@@ -179,9 +180,10 @@ where
     ///
     /// delimiter is 1 byte, newline is 1 bytes, and we are not using a regex
     fn allow_fastmode(&self) -> bool {
-        self.config.delimiter.len() == 1
-            && self.config.line_terminator.as_bytes().len() == 1
-            && !self.config.is_parser_regex
+        false
+        // self.config.delimiter.len() == 1
+        //     && self.config.line_terminator.as_bytes().len() == 1
+        //     && !self.config.is_parser_regex
     }
 
     pub fn hck_input<P, W>(
@@ -284,11 +286,19 @@ where
                 line.push((start, index - 1));
                 start = index + 1;
             } else if bytes[index] == newline {
+                // Special case when the user asked for the first field, and we haven't found
+                // any other fields, give back the whole line
+                if line.is_empty() {
+                    line.push((start, index - 1));
+                }
                 let items = self.fields.iter().flat_map(|f| {
-                    line[f.low..=min(f.high, line.len() - 1)]
-                        .iter()
-                        .map(|(start, stop)| &bytes[*start..=*stop])
+                    let slice = line
+                        .get(f.low..=min(f.high, line.len().saturating_sub(1)))
+                        .unwrap_or(&[]);
+                    // .unwrap_or(&[]);
+                    slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                 });
+
                 output.join_append(
                     self.config.output_delimiter,
                     items,
@@ -330,10 +340,17 @@ where
                     line.push((start, index - 1));
                     start = index + 1;
                 } else if bytes[index] == newline {
+                    // Special case when the user asked for the first field, and we haven't found
+                    // any other fields, give back the whole line
+                    if line.is_empty() {
+                        line.push((start, index - 1));
+                    }
                     let items = self.fields.iter().flat_map(|f| {
-                        line[f.low..=min(f.high, line.len() - 1)]
-                            .iter()
-                            .map(|(start, stop)| &bytes[*start..=*stop])
+                        let slice = line
+                            .get(f.low..=min(f.high, line.len().saturating_sub(1)))
+                            .unwrap_or(&[]);
+                        // .unwrap_or(&[]);
+                        slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                     });
                     output.join_append(
                         self.config.output_delimiter,

@@ -197,6 +197,11 @@ impl FieldRange {
             }
         }
     }
+
+    /// Test if a value is contained in this range
+    pub fn contains(&self, value: usize) -> bool {
+        value >= self.low && value <= self.high
+    }
 }
 
 #[cfg(test)]

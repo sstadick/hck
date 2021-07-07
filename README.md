@@ -40,7 +40,7 @@ From the [releases page](https://github.com/sstadick/hck/releases)
 ### Splitting with a substr delmiter
 
 ```bash
-ps aux | hck -d, -f1-3,5-
+hck -d'\t' -f1-3,5- my.tsv
 ```
 
 ### Splitting with a regex delimiter
@@ -119,7 +119,6 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 | `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.779 ± 0.008 |   5.769 |   5.789 | 3.79 ± 0.02 |
 | `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 5.147 ± 0.061 |   5.093 |   5.249 | 3.37 ± 0.04 |
 | `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 7.053 ± 0.025 |   7.018 |   7.081 | 4.62 ± 0.03 |
-
 
 ### Multi-character delimiter benchmark
 

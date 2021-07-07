@@ -44,6 +44,7 @@ memchr = "2.4.0"
 
 [dev-dependencies]
 tempfile = "3.2.0"
+rstest = "0.10.0"
 
 [build-dependencies]
 built = {version ="0.5.1", features = ["git2"]}

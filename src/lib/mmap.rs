@@ -10,10 +10,10 @@ use memmap::Mmap;
 /// believes it will make the search faster.
 ///
 /// By default, memory maps are disabled.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct MmapChoice(MmapChoiceImpl);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 enum MmapChoiceImpl {
     Auto,
     Never,

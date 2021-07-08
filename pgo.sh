@@ -19,7 +19,7 @@ spaced_data="./pgo-data/spaced_data.txt"
 llvm_profdata=$(find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm-profdata -type f)
 
 # STEP 1: Build the instrumented binaries
-RUSTFLAGS="-Cprofile-generate=./pgo-data" \
+RUSTFLAGS="-Cprofile-generate=$cwd/pgo-data" \
     cargo build --release
 
 # STEP 2: Run the instrumented binaries with some typical data

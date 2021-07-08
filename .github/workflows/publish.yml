@@ -25,8 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install LLVM Tools
+        run: rustup component add llvm-tools-preview
+
       - name: Build
-        run: cargo build --release --locked
+        run: bash pgo.sh
+        # run: cargo build --release --locked
 
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2

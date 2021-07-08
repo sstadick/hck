@@ -26,24 +26,34 @@ It is meant to be simple and easy to use while exploring datasets.
 
 ## Install
 
-With the Rust toolchain:
+- With the Rust toolchain:
 
 ```bash
 export RUSTFLAGS='-C target-cpu=native'
 cargo install hck
 ```
 
-From the [releases page](https://github.com/sstadick/hck/releases), these are built with profile guided optimizations, but don't target a specific cpu.
-
-Or, if you want the absolute fastest possible build that makes use of profile guided optimizations AND native cpu features:
+- From the [releases page](https://github.com/sstadick/hck/releases), these are built with profile guided optimizations, but don't target a specific cpu.
+- Or, if you want the absolute fastest possible build that makes use of profile guided optimizations AND native cpu features:
 
 ```bash
 # Assumes you are on stable rust
+# NOTE: this won't work on windows, see CI for linked issue
 rustup component add llvm-tools-preview
 git clone https://github.com/sstadick/hck
 cd hck
 bash pgo_local.sh
 cp ./target/release/hck ~/.cargo/bin/hck
+```
+
+- Lastly, you can pull one of the `*-src.tar.gz` files from the [releases page](https://github.com/sstadick/hck/releases) which includes the PGO data and run:
+
+```bash
+# ... after pulling, unpacking, and cd'ing into the src code directory
+# NOTE: this won't work on windows, see CI for linked issue
+# NOTE: on macos it is exptected to see warnings about missing PGO functions, it is still working!
+RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" \
+    cargo build --release --locked
 ```
 
 ## Examples

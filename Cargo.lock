@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "hck"
-version = "0.3.8"
+version = "0.3.9-alpha.0"
 dependencies = [
  "anyhow",
  "bstr",

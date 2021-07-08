@@ -42,7 +42,7 @@ jobs:
       - name: Build archive
         shell: bash
         run: |
-          staging="${{matrix.asset_name}}-${{ github.ref }}-src"
+          staging="${{matrix.asset_name}}-src"
           mkdir -p "$staging"
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"
@@ -73,5 +73,5 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/release/${{ matrix.artifact_name }}
-          asset_name: ${{ matrix.asset_name }}-${{ github.ref }}
+          asset_name: ${{ matrix.asset_name }}
           tag: ${{ github.ref }}

@@ -66,8 +66,8 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             cargo install cargo-deb
-            RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" cargo deb
-            echo "DEB=./target/debian/hck*.deb"
+            RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" cargo deb
+            echo "DEB=./target/debian/hck*.deb" >> $GITHUB_ENV
           fi
 
       - name: Upload deb package

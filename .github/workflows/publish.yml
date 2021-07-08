@@ -30,25 +30,31 @@ jobs:
 
       - name: Build
         run: |
-          bash pgo.sh
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows MSVC does not yet support PGO
+            # https://github.com/rust-lang/rust/issues/61002
+            cargo build --release --locked
+          else
+            bash pgo.sh
+          fi
 
       - name: Build archive
         shell: bash
         run: |
-          staging="${{matrix.asset_name}}-${{ github.ref }}-src-pgo"
+          staging="${{matrix.asset_name}}-${{ github.ref }}-src"
           mkdir -p "$staging"
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"
           cp {Cargo.toml,Cargo.lock} "$staging/"
           cp -R ./src "./$staging/src"
 
-          mkdir -p "${staging}/pgo-data"
-          cp ./pgo-data/merged.profdata "./${staging}/pgo-data/merged.profdata"
 
-          if [ "${{ matrix.os }}" = "windows-latest"]; then
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
             7z a "${staging}.zip" "$staging"
             echo "ASSET=${staging}.zip" >> $GITHUB_ENV
           else
+            mkdir -p "${staging}/pgo-data"
+            cp ./pgo-data/merged.profdata "./${staging}/pgo-data/merged.profdata"
             tar czf "${staging}.tar.gz" "${staging}"
             echo "ASSET=${staging}.tar.gz" >> $GITHUB_ENV
           fi

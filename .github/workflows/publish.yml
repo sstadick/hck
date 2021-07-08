@@ -72,6 +72,7 @@ jobs:
 
       - name: Upload deb package
         uses: svenstaro/upload-release-action@v2
+        if: "${{ matrix.os }}" = "ubuntu-latest"
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{ env.DEB }}

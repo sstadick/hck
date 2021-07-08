@@ -35,7 +35,7 @@ jobs:
       - name: Build archive
         shell: bash
         run: |
-          staging="${{matrix.asset_name}}"-${{ github.ref }}-src-pgo"
+          staging="${{matrix.asset_name}}-${{ github.ref }}-src-pgo"
           mkdir -p "$staging"
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"

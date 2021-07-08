@@ -19,7 +19,7 @@ jobs:
             artifact_name: hck
             asset_name: hck-macos-amd64
           - os: windows-latest
-            artifact_name: hck
+            artifact_name: hck.exe
             asset_name: hck-windows-amd64
 
     steps:

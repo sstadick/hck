@@ -26,6 +26,15 @@ It is meant to be simple and easy to use while exploring datasets.
 
 ## Install
 
+- Homebrew / Linuxbrew
+
+```bash
+brew tap sstadick/hck
+brew install hck
+```
+
+This is the prefered method for now as it will get you the fastest binary with the least work
+
 - With the Rust toolchain:
 
 ```bash
@@ -55,6 +64,8 @@ cp ./target/release/hck ~/.cargo/bin/hck
 RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" \
     cargo build --release --locked
 ```
+
+- Choco / Deb coming soon...
 
 ## Examples
 

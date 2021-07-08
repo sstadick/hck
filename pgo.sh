@@ -1,6 +1,7 @@
 # Try some profile guided optimiztion
 # https://doc.rust-lang.org/rustc/profile-guided-optimization.html
 # rustup component add llvm-tools-preview
+set -x
 
 # STEP 0: Make sure there is no left-over profiling data from previous runs
 cwd=$(pwd)
@@ -24,23 +25,23 @@ RUSTFLAGS="-Cprofile-generate=./pgo-data" \
 # STEP 2: Run the instrumented binaries with some typical data
 
 # single-byte in order
-./target/$target/release/hck -Ld, -f1,8,19 "$data"  > /dev/null
-./target/$target/release/hck -Ld, --no-mmap -f1,8,19 "$data"  > /dev/null
+./target/release/hck -Ld, -f1,8,19 "$data"  > /dev/null
+./target/release/hck -Ld, --no-mmap -f1,8,19 "$data"  > /dev/null
 
 # single byte reorder
-./target/$target/release/hck -Ld, -f1,19,8 "$data" > /dev/null
-./target/$target/release/hck -Ld, --no-mmap -f1,19,8 "$data" > /dev/null
+./target/release/hck -Ld, -f1,19,8 "$data" > /dev/null
+./target/release/hck -Ld, --no-mmap -f1,19,8 "$data" > /dev/null
 
 # single byte regex
-./target/$target/release/hck -d, -f1,8,19 "$data" > /dev/null
-./target/$target/release/hck -d, -f1,8,19 --no-mmap "$data" > /dev/null
+./target/release/hck -d, -f1,8,19 "$data" > /dev/null
+./target/release/hck -d, -f1,8,19 --no-mmap "$data" > /dev/null
 
 # make multi-space file
-./target/$target/release/hck -Ld, -D '   ' -f1,8,19 "$data" > "$spaced_data"
+./target/release/hck -Ld, -D '   ' -f1,8,19 "$data" > "$spaced_data"
 
 # multi byte regex
-./target/$target/release/hck -d '\s+' -f1,8,19 "$spaced_data" > /dev/null
-./target/$target/release/hck -d '\s+' --no-mmap -f1,8,19 "$spaced_data" > /dev/null
+./target/release/hck -d '\s+' -f1,8,19 "$spaced_data" > /dev/null
+./target/release/hck -d '\s+' --no-mmap -f1,8,19 "$spaced_data" > /dev/null
 
 rm "$spaced_data"
 rm "$data"
@@ -49,14 +50,5 @@ rm "$data"
 "$llvm_profdata" merge -o "$cwd"/pgo-data/merged.profdata "$cwd"/pgo-data
 
 # STEP 4: Use the `.profdata` file for guiding optimizations
-# Fastest possible build
-RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
+RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
     cargo build --release
-
-# Fastest possible build and install
-# RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
-#     cargo install --path .
-
-# Generic build
-# RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
-#     cargo build --release

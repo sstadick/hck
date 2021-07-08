@@ -33,7 +33,15 @@ export RUSTFLAGS='-C target-cpu=native'
 cargo install hck
 ```
 
-From the [releases page](https://github.com/sstadick/hck/releases)
+From the [releases page](https://github.com/sstadick/hck/releases), these are built with profile guided optimizations, but don't target a specific cpu.
+
+Or, if you want the absolute fastest possible build that makes use of profile guided optimizations AND native cpu features:
+
+```bash
+git clone https://github.com/sstadick/hck
+cd hck
+bash pgo_local.sh
+```
 
 ## Examples
 

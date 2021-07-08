@@ -56,8 +56,6 @@ jobs:
             7z a "${staging}.zip" "$staging"
             echo "ASSET=${staging}.zip" >> $GITHUB_ENV
           else
-            mkdir -p "${staging}/pgo-data"
-            cp ./pgo-data/merged.profdata "./${staging}/pgo-data/merged.profdata"
             tar czf "${staging}.tar.gz" "${staging}"
             echo "ASSET=${staging}.tar.gz" >> $GITHUB_ENV
           fi

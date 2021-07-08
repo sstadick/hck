@@ -239,6 +239,10 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 - Add a greedy/non-greedy option that will ignore blank fields `split.filter(|s| !s.is_empty() || config.opt.non_greedy)`
 - Implement parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
+## More packages and builds
+
+https://github.com/sharkdp/bat/blob/master/.github/workflows/CICD.yml
+
 ## References
 
 - [rust-coreutils-cut](https://github.com/uutils/coreutils/blob/e48ff9dd9ee0d55da285f99d75f6169a5e4e7acc/src/uu/cut/src/cut.rs)

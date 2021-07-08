@@ -61,6 +61,23 @@ jobs:
             echo "ASSET=${staging}.tar.gz" >> $GITHUB_ENV
           fi
 
+      - name: Create deb artifact
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            cargo install cargo-deb
+            RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" cargo deb
+            echo "DEB=./target/debian/hck*.deb"
+          fi
+
+      - name: Upload deb package
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.DEB }}
+          asset_name: ${{ env.DEB }}
+          tag: ${{ github.ref }}
+
       - name: Upload src and pgo data to release
         uses: svenstaro/upload-release-action@v2
         with:

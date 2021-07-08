@@ -50,14 +50,10 @@ rm "$data"
 "$llvm_profdata" merge -o "$cwd"/pgo-data/merged.profdata "$cwd"/pgo-data
 
 # STEP 4: Use the `.profdata` file for guiding optimizations
-# Fastest possible build
-# RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
-#     cargo build --release
 
-# Fastest possible build and install
-# RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
-#     cargo install --path .
-
-# Generic build
+# Local specific build build
 RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
     cargo build --release --locked
+
+# Create deb package
+# RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" cargo deb

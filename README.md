@@ -24,6 +24,11 @@ It is meant to be simple and easy to use while exploring datasets.
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep). See [Decompression](#decompression).
 - Speed
 
+## Non-goals
+
+- `hck` does not aim to be a complete CSV / TSV parser a la `xsv` which will respect quoting rules. It acts similar to `cut` in that it will split on the delimiter no mater where in the line it is.
+- Delimiters cannot contain newlines... well they can, thye will just never be seen. `hck` will always be a line-by-line tool where newlines are the standard `\n` `\r\n`.
+
 ## Install
 
 - Homebrew / Linuxbrew
@@ -42,7 +47,7 @@ export RUSTFLAGS='-C target-cpu=native'
 cargo install hck
 ```
 
-- From the [releases page](https://github.com/sstadick/hck/releases), these are built with profile guided optimizations, but don't target a specific cpu.
+- From the [releases page](https://github.com/sstadick/hck/releases)
 - Or, if you want the absolute fastest possible build that makes use of profile guided optimizations AND native cpu features:
 
 ```bash
@@ -53,16 +58,6 @@ git clone https://github.com/sstadick/hck
 cd hck
 bash pgo_local.sh
 cp ./target/release/hck ~/.cargo/bin/hck
-```
-
-- Lastly, you can pull one of the `*-src.tar.gz` files from the [releases page](https://github.com/sstadick/hck/releases) which includes the PGO data and run:
-
-```bash
-# ... after pulling, unpacking, and cd'ing into the src code directory
-# NOTE: this won't work on windows, see CI for linked issue
-# NOTE: on macos it is exptected to see warnings about missing PGO functions, it is still working!
-RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" \
-    cargo build --release --locked
 ```
 
 - Choco / Deb coming soon...
@@ -250,15 +245,15 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 ## TODO
 
 - Add complement argument
-- Support indexing from the end
 - Don't reparse fields / headers for each new file
 - figure out how to better reuse / share a vec
-- Bake in grep / filtering somehow?
+- Support indexing from the end (unlikely though)
+- Bake in grep / filtering somehow (this will not be done at the expese of the primary utilty of `hck`)
 - Move tests from main to core
 - Add more tests all around
-- Add preprocessor / pigz support
+- Add pigz support
 - Add a greedy/non-greedy option that will ignore blank fields `split.filter(|s| !s.is_empty() || config.opt.non_greedy)`
-- Implement parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
+- Experiment with parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## More packages and builds
 

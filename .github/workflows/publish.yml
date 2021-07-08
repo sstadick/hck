@@ -31,13 +31,14 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # Windows MSVC does not yet support PGO
-            # https://github.com/rust-lang/rust/issues/61002
-            cargo build --release --locked
-          else
-            bash pgo.sh
-          fi
+          cargo build --release --locked
+          # if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          #   # Windows MSVC does not yet support PGO
+          #   # https://github.com/rust-lang/rust/issues/61002
+          #   cargo build --release --locked
+          # else
+          #   bash pgo.sh
+          # fi
 
       - name: Build archive
         shell: bash

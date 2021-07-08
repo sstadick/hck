@@ -18,9 +18,9 @@ jobs:
           - os: macos-latest
             artifact_name: hck
             asset_name: hck-macos-amd64
-          # - os: windows-latest
-          #   artifact_name: hck
-          #   asset_name: windows-macos-amd64
+          - os: windows-latest
+            artifact_name: hck
+            asset_name: hck-windows-amd64
 
     steps:
       - uses: actions/checkout@v2
@@ -39,8 +39,11 @@ jobs:
           mkdir -p "$staging"
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"
+          cp {Cargo.toml,Cargo.lock} "$staging/"
           cp -R ./src "./$staging/src"
-          cp -R ./pgo-data "./$staging/pgo-data"
+
+          mkdir -p "${staging}/pgo-data"
+          cp ./pgo-data/merged.profdata "./${staging}/pgo-data/merged.profdata"
 
           if [ "${{ matrix.os }}" = "windows-latest"]; then
             7z a "${staging}.zip" "$staging"

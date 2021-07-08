@@ -20,7 +20,7 @@ llvm_profdata=$(find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm
 
 # STEP 1: Build the instrumented binaries
 RUSTFLAGS="-Cprofile-generate=$cwd/pgo-data" \
-    cargo build --release
+    cargo build --release --locked
 
 # STEP 2: Run the instrumented binaries with some typical data
 
@@ -60,4 +60,4 @@ rm "$data"
 
 # Generic build
 RUSTFLAGS="-Ctarget-cpu=native -Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$cwd/pgo-data/merged.profdata" \
-    cargo build --release
+    cargo build --release --locked

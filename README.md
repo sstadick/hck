@@ -224,7 +224,7 @@ When a file with one of the extensions above is found, `hck` will open a subproc
 
 ## Profile Guided Optimization
 
-See the `pgo*.sh` scripts for how to build this with optimizations. You will need to install the llvm tools via `rustup component add llvm-tools-preview` for this to work.
+See the `pgo*.sh` scripts for how to build this with optimizations. You will need to install the llvm tools via `rustup component add llvm-tools-preview` for this to work. Building with PGO seems to improve performance anywhere from 5-30% depending on the platform and codepath. i.e. on mac os it seems to have a larger effect, and on the regex codepath it also seems to have a greater effect.
 
 ## TODO
 

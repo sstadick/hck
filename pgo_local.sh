@@ -16,7 +16,6 @@ wget -q -S -O - https://archive.ics.uci.edu/ml/machine-learning-databases/00347/
 
 data="./pgo-data/data.csv"
 spaced_data="./pgo-data/spaced_data.txt"
-llvm_profdata=$(find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm-profdata -type f)
 
 # STEP 1: Build the instrumented binaries
 RUSTFLAGS="-Cprofile-generate=$cwd/pgo-data" \
@@ -47,7 +46,7 @@ rm "$spaced_data"
 rm "$data"
 
 # STEP 3: Merge the `.profraw` files into a `.profdata` file
-"$llvm_profdata" merge -o "$cwd"/pgo-data/merged.profdata "$cwd"/pgo-data
+llvm-profdata merge -o "$cwd"/pgo-data/merged.profdata "$cwd"/pgo-data
 
 # STEP 4: Use the `.profdata` file for guiding optimizations
 # Fastest possible build

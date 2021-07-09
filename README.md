@@ -27,7 +27,7 @@ It is meant to be simple and easy to use while exploring datasets.
 ## Non-goals
 
 - `hck` does not aim to be a complete CSV / TSV parser a la `xsv` which will respect quoting rules. It acts similar to `cut` in that it will split on the delimiter no mater where in the line it is.
-- Delimiters cannot contain newlines... well they can, thye will just never be seen. `hck` will always be a line-by-line tool where newlines are the standard `\n` `\r\n`.
+- Delimiters cannot contain newlines... well they can, they will just never be seen. `hck` will always be a line-by-line tool where newlines are the standard `\n` `\r\n`.
 
 ## Install
 
@@ -38,7 +38,16 @@ brew tap sstadick/hck
 brew install hck
 ```
 
-This is the prefered method for now as it will get you the fastest binary with the least work
+\* Built with profile guided optimizations
+
+- Debian (Ubuntu)
+
+```bash
+curl -LO https://github.com/sstadick/hck/releases/download/<latest>/hck-linux-amd64.deb
+sudo dpkg -i hck-linux-amd64.deb
+```
+
+\* Built with profile guided optimizations
 
 - With the Rust toolchain:
 
@@ -47,7 +56,8 @@ export RUSTFLAGS='-C target-cpu=native'
 cargo install hck
 ```
 
-- From the [releases page](https://github.com/sstadick/hck/releases)
+- From the [releases page](https://github.com/sstadick/hck/releases) (the binaries have been built with profile guided optimizations)
+
 - Or, if you want the absolute fastest possible build that makes use of profile guided optimizations AND native cpu features:
 
 ```bash
@@ -60,7 +70,7 @@ bash pgo_local.sh
 cp ./target/release/hck ~/.cargo/bin/hck
 ```
 
-- Choco / Deb coming soon...
+- PRs are both welcome and encouraged for adding more packaging options and build types! I'd especially welcome PRs for the windows family of package managers / general making sure things are windows friendly.
 
 ## Examples
 
@@ -248,7 +258,7 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 - Don't reparse fields / headers for each new file
 - figure out how to better reuse / share a vec
 - Support indexing from the end (unlikely though)
-- Bake in grep / filtering somehow (this will not be done at the expese of the primary utilty of `hck`)
+- Bake in grep / filtering somehow (this will not be done at the expense of the primary utility of `hck`)
 - Move tests from main to core
 - Add more tests all around
 - Add pigz support

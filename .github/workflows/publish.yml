@@ -69,7 +69,7 @@ jobs:
             RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" cargo deb
             deb_path=$(find ./target/debian/ -type f -name 'hck*')
             asset_path="./${{ matrix.asset_name }}.deb"
-            mv "${dep_path}" "${asset_path}"
+            mv "${deb_path}" "${asset_path}"
             echo "DEB=${asset_path}" >> $GITHUB_ENV
           fi
 

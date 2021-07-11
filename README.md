@@ -26,7 +26,7 @@ It is meant to be simple and easy to use while exploring datasets.
 
 ## Non-goals
 
-- `hck` does not aim to be a complete CSV / TSV parser a la `xsv` which will respect quoting rules. It acts similar to `cut` in that it will split on the delimiter no mater where in the line it is.
+- `hck` does not aim to be a complete CSV / TSV parser a la `xsv` which will respect quoting rules. It acts similar to `cut` in that it will split on the delimiter no matter where in the line it is.
 - Delimiters cannot contain newlines... well they can, they will just never be seen. `hck` will always be a line-by-line tool where newlines are the standard `\n` `\r\n`.
 
 ## Install

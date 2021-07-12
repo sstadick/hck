@@ -229,7 +229,7 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 ## Decompression
 
-The following table indicates the file extension / binary pairs that are used to try to decompress a file whent the `-z` option is specified:
+The following table indicates the file extension / binary pairs that are used to try to decompress a file when the `-z` option is specified:
 
 | Extension | Binary                   | Type       |
 | :-------- | :----------------------- | :--------- |

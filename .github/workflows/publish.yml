@@ -24,6 +24,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: extractions/setup-just@v1
 
       - name: Install LLVM Tools
         run: rustup component add llvm-tools-preview
@@ -36,7 +37,7 @@ jobs:
             # https://github.com/rust-lang/rust/issues/61002
             cargo build --release --locked
           else
-            bash pgo.sh
+            just build
           fi
 
       - name: Build archive

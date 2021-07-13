@@ -70,11 +70,10 @@ cargo install hck
 ```bash
 # Assumes you are on stable rust
 # NOTE: this won't work on windows, see CI for linked issue
-rustup component add llvm-tools-preview
+cargo install just
 git clone https://github.com/sstadick/hck
 cd hck
-bash pgo_local.sh
-cp ./target/release/hck ~/.cargo/bin/hck
+just build-native
 ```
 
 - PRs are both welcome and encouraged for adding more packaging options and build types! I'd especially welcome PRs for the windows family of package managers / general making sure things are windows friendly.

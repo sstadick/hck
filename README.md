@@ -210,8 +210,8 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 | Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |     Relative |
 | :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | -----------: |
-| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                             |  1.827 ± 0.009 |   1.818 |   1.842 |         1.00 |
-| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                   |  2.123 ± 0.013 |   2.105 |   2.133 |  1.16 ± 0.01 |
+| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null` (note, that's three spaces)                 |  1.827 ± 0.009 |   1.818 |   1.842 |         1.00 |
+| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null` (note, that's three spaces)       |  2.123 ± 0.013 |   2.105 |   2.133 |  1.16 ± 0.01 |
 | `hck -d'[[:space:]]+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                     |  9.366 ± 0.202 |   9.009 |   9.506 |  5.13 ± 0.11 |
 | `hck -d'[[:space:]]+' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                           |  9.636 ± 0.030 |   9.588 |   9.666 |  5.27 ± 0.03 |
 | `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 10.038 ± 0.005 |  10.036 |  10.047 |  5.49 ± 0.03 |

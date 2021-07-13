@@ -38,6 +38,13 @@ brew tap sstadick/hck
 brew install hck
 ```
 
+- MacPorts
+
+```bash
+sudo port selfupdate
+sudo port install hck
+```
+
 \* Built with profile guided optimizations
 
 - Debian (Ubuntu)

@@ -205,6 +205,11 @@ impl FieldRange {
     }
 
     pub fn complement(ranges: &[FieldRange]) -> Vec<FieldRange> {
+        // I think I need to merge all overlaps in ranges first, regardless of `pos`, then sort out pos
+        // I'm not sure it makes sense to keep pos for complements
+        // -f 12-,8-10,1-2
+        // What is the correct order to output fields in with that set of ranges?
+        // 3,4,5,6,7,11
         let mut comps = Vec::with_capacity(ranges.len() + 1);
 
         if !ranges.is_empty() && ranges[0].low > 0 {

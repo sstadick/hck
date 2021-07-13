@@ -204,6 +204,45 @@ impl FieldRange {
         }
     }
 
+    pub fn complement(ranges: &[FieldRange]) -> Vec<FieldRange> {
+        let mut comps = Vec::with_capacity(ranges.len() + 1);
+
+        if !ranges.is_empty() && ranges[0].low > 0 {
+            comps.push(FieldRange {
+                low: 0,
+                high: ranges[0].low - 1,
+                pos: ranges[0].pos,
+            });
+        }
+
+        let mut range_iter = ranges.iter().peekable();
+        loop {
+            match (range_iter.next(), range_iter.peek()) {
+                (Some(left), Some(right)) => {
+                    if left.high + 1 != right.low && left.high < right.low {
+                        comps.push(FieldRange {
+                            low: left.high + 1,
+                            high: right.low - 1,
+                            pos: left.pos,
+                        });
+                    }
+                }
+                (Some(last), None) => {
+                    if last.high < MAX - 1 {
+                        comps.push(FieldRange {
+                            low: last.high + 1,
+                            high: MAX - 1,
+                            pos: last.pos,
+                        })
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        comps
+    }
+
     /// Test if a value is contained in this range
     pub fn contains(&self, value: usize) -> bool {
         value >= self.low && value <= self.high
@@ -225,6 +264,90 @@ mod test {
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1},  FieldRange { low: 3, high: usize::MAX - 1, pos: 0}, FieldRange { low: 4, high: 7, pos: 2}], FieldRange::from_list("4-,1,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 7, pos: 0}], FieldRange::from_list("-4,5-8").unwrap());
+    }
+
+    #[test]
+    #[rustfmt::skip::macros(assert_eq)]
+    fn test_complement() {
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: MAX - 1, pos: 0}
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 0,       pos: 0}
+            ]),
+            "1"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 0},
+                FieldRange { low: 4, high: MAX - 1, pos: 1},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 0,       pos: 0},
+                FieldRange { low: 3, high: 3,       pos: 1}
+            ]),
+            "1,4"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 2, high: 2,              pos: 0},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 1,              pos: 0},
+                FieldRange { low: 3, high: usize::MAX - 1, pos: 1}
+            ]),
+            "1,2,4-"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 0, high: 0,              pos: 0},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 1, high: 2,              pos: 0},
+                FieldRange { low: 3, high: MAX - 1, pos: 1}
+            ]),
+            "2,3,4-"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 0},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 0,       pos: 0},
+                FieldRange { low: 3, high: MAX - 1, pos: 1}
+            ]),
+            "1,4-,5-8"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 1},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 0,       pos: 1},
+                FieldRange { low: 3, high: MAX - 1, pos: 0},
+                FieldRange { low: 4, high: 7,       pos: 2}
+            ]),
+            "4-,1,5-8"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 4, high: MAX - 1, pos: 0},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 3,       pos: 0}
+            ]),
+            "-4"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 8, high: MAX - 1, pos: 0},
+            ],
+            FieldRange::complement(&[
+                FieldRange { low: 0, high: 7,       pos: 0}
+            ]),
+            "-4,5-8"
+        );
     }
 
     #[test]

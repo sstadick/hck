@@ -195,7 +195,8 @@ impl FieldRange {
 
             while j < ranges.len()
                 && ranges[j].low <= ranges[i].high + 1
-                && (ranges[j].pos == ranges[i].pos || ranges[j].pos - 1 == ranges[i].pos)
+                && (ranges[j].pos == ranges[i].pos
+                    || ranges[j].pos.saturating_sub(1) == ranges[i].pos)
             {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);

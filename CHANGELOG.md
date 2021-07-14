@@ -4,7 +4,13 @@
 
 - Added `--exclude|-e` flag to select a set of fields to exclude. These fields may overlap with the `-f` flag and take precedence over fields selected by `-f`.
 - Added `--exclude-header|-E` flag to select a set of headers to exclude. These may mix and match with `-e` `-f` and `F`. The `-r` flag will cause the headers to be treated as a regex.
-- As part of the `-e` additiona, the default behaviour if now headers or fields are specified is to assume `-f1-`, which allow the user to do `hck -e 3,8,290`.
+- As part of the `-e` additional, the default behavior if now headers or fields are specified is to assume `-f1-`, which allow the user to do `hck -e 3,8,290`.
+- pigz is now a supported decompression binary, if it's not present `hck` defaults back to `gzip`.
+- Decided against adding a greedy heuristic because it actually had worse performance on the most common case of `\s` (but better on `[[:space:]]`, which was odd).
+- Moves CI to using justfile instead of pgo scripts.
+- Fixes several issues in benchmarks
+  - `choose` was not using fastest path and had the wrong input file
+  - All tools splitting by a space regex were incorrectly parsing the header line in the multichar data, header line is now fixed
 
 ## v0.4.2
 

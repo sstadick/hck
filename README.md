@@ -260,15 +260,13 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 
 ## TODO
 
-- Add complement argument
 - Don't reparse fields / headers for each new file
 - figure out how to better reuse / share a vec
 - Support indexing from the end (unlikely though)
 - Bake in grep / filtering somehow (this will not be done at the expense of the primary utility of `hck`)
 - Move tests from main to core
 - Add more tests all around
-- Add pigz support
-- Add a greedy/non-greedy option that will ignore blank fields `split.filter(|s| !s.is_empty() || config.opt.non_greedy)`
+- Add output compression detection when writing to a file
 - Experiment with parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## More packages and builds

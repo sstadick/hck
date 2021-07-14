@@ -111,6 +111,16 @@ PID     USER    %CPU    %MEM    VSZ     RSS     TTY     STAT    START   TIME    
 3       root    0.0     0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
 ```
 
+### Excluding output columns
+
+```bash
+❯ ps aux | hck -e3,5 | head -n4
+USER    PID     %MEM    RSS     TTY     STAT    START   TIME    COMMAND
+root    1       0.0     14408   ?       Ss      Jun21   0:27    /sbin/init      splash
+root    2       0.0     0       ?       S       Jun21   0:01    [kthreadd]
+root    3       0.0     0       ?       I<      Jun21   0:00    [rcu_gp]
+```
+
 ### Changing the output record separator
 
 ```bash
@@ -239,6 +249,7 @@ The following table indicates the file extension / binary pairs that are used to
 
 | Extension | Binary                   | Type       |
 | :-------- | :----------------------- | :--------- |
+| `*.gz`    | `pigz -d -c`             | gzip       |
 | `*.gz`    | `gzip -d -c`             | gzip       |
 | `*.tgz`   | `gzip -d -c`             | gzip       |
 | `*.bz2`   | `bzip2 -d -c`            | bzip2      |
@@ -252,7 +263,7 @@ The following table indicates the file extension / binary pairs that are used to
 | `*.zstd`  | `zstd -q -d -c`          | zstd       |
 | `*.Z`     | `uncompress -c`          | uncompress |
 
-When a file with one of the extensions above is found, `hck` will open a subprocess running the the decompression tool listed above and read from the output of that tool. If the binary can't be found then `hck` will try to read the compressed file as is. See [`grep_cli`](https://github.com/BurntSushi/ripgrep/blob/9eddb71b8e86a04d7048b920b9b50a2e97068d03/crates/cli/src/decompress.rs#L468) for source code. The end goal is to add a similar preprocessor as [ripgrep](https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#preprocessor).
+When a file with one of the extensions above is found, `hck` will open a subprocess running the the decompression tool listed above and read from the output of that tool. If the binary can't be found then `hck` will try to read the compressed file as is. See [`grep_cli`](https://github.com/BurntSushi/ripgrep/blob/9eddb71b8e86a04d7048b920b9b50a2e97068d03/crates/cli/src/decompress.rs#L468) for source code. The end goal is to add a similar preprocessor as [ripgrep](https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#preprocessor). Where there are multiple binaries for a given type, they are tried in the order listed above.
 
 ## Profile Guided Optimization
 

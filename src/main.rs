@@ -162,12 +162,6 @@ struct Opts {
     #[structopt(short = "z", long)]
     try_decompress: bool,
 
-    /// Be greedy with regex delimiter, i.e. `[[:space:]]` instead of `[[:space:]]+` and "empty"
-    /// fields will be thrown away. This is the default behavior of awk and is significantly more
-    /// preferment than a regex with a `+`.
-    #[structopt(short = "g", long, conflicts_with = "delimiter_is_literal")]
-    greedy_regex: bool,
-
     /// Disallow the possibility of using mmap
     #[structopt(long)]
     no_mmap: bool,
@@ -332,7 +326,7 @@ fn run<W: Write>(
             let mut core = Core::new(
                 &conf,
                 &fields,
-                RegexLineParser::new(&fields, &regex, opts.greedy_regex),
+                RegexLineParser::new(&fields, &regex),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;
@@ -382,7 +376,6 @@ mod test {
             crlf: false,
             exclude: None,
             exclude_header: None,
-            greedy_regex: false,
         }
     }
 
@@ -408,7 +401,6 @@ mod test {
             crlf: false,
             exclude: None,
             exclude_header: None,
-            greedy_regex: false,
         }
     }
 

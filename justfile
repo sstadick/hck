@@ -25,23 +25,26 @@ generate-pgo-data: prep get-data
 
 run-instrumented-binary: generate-pgo-data
     # single-byte in order
-    {{justfile_directory()}}/target/release/hck -Ld, -f1,8,19 "{{data}}"  > /dev/null
-    {{justfile_directory()}}/target/release/hck -Ld, --no-mmap -f1,8,19 "{{data}}"  > /dev/null
+    {{justfile_directory()}}/target/release/hck -Ld, -f1,8,19 -e8 "{{data}}"  > /dev/null
+    {{justfile_directory()}}/target/release/hck -Ld, --no-mmap -f1,8,19 -e8 "{{data}}"  > /dev/null
+
 
     # single byte reorder
-    {{justfile_directory()}}/target/release/hck -Ld, -f1,19,8 "{{data}}" > /dev/null
-    {{justfile_directory()}}/target/release/hck -Ld, --no-mmap -f1,19,8 "{{data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -Ld, -f1,19,8 -e8 "{{data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -Ld, --no-mmap -f1,19,8 -e8 "{{data}}" > /dev/null
 
     # single byte regex
-    {{justfile_directory()}}/target/release/hck -d, -f1,8,19 "{{data}}" > /dev/null
-    {{justfile_directory()}}/target/release/hck -d, -f1,8,19 --no-mmap "{{data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d, -f1,8,19 -e8 "{{data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d, -f1,8,19 --no-mmap -e 8 "{{data}}" > /dev/null
 
     # make multi-space file
     {{justfile_directory()}}/target/release/hck -Ld, -D '   ' -f1,8,19 "{{data}}" > "{{spaced-data}}"
 
     # multi byte regex
-    {{justfile_directory()}}/target/release/hck -d '\s+' -f1,8,19 "{{spaced-data}}" > /dev/null
-    {{justfile_directory()}}/target/release/hck -d '\s+' --no-mmap -f1,8,19 "{{spaced-data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d '\s+' -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d '\s+' --no-mmap -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d '[[:space:]]+' -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
+    {{justfile_directory()}}/target/release/hck -d '[[:space:]]+' --no-mmap -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
 
 clean-data: run-instrumented-binary
     rm {{data}}

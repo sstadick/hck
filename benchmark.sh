@@ -26,14 +26,12 @@ sed -i 's/# label/#label/' ./hyper_data_multichar.txt
 hyperfine --warmup 3 -m 5 --export-markdown multi_char.md --show-output \
     "hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
     "hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null" \
+    "hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
+    "hck -d'   ' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
     "hck -d'[[:space:]]+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
     "hck -d'[[:space:]]+' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
-    "hck -d'[[:space:]]' -f1,8,19 -g ./hyper_data_multichar.txt > /dev/null" \
-    "hck -d'[[:space:]]' --no-mmap -f1,8,19 -g ./hyper_data_multichar.txt > /dev/null" \
     "hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null" \
     "hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null" \
-    "hck -d'\s' -f1,8,19 -g ./hyper_data_multichar.txt > /dev/null" \
-    "hck -d'\s' -f1,8,19 -g --no-mmap ./hyper_data_multichar.txt > /dev/null" \
     "choose -f '   ' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null" \
     "choose -f '[[:space:]]' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null" \
     "choose -f '\s' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null" \

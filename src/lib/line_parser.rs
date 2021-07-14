@@ -66,16 +66,13 @@ impl<'a> LineParser<'a> for SubStrLineParser<'a> {
 pub struct RegexLineParser<'a> {
     field_ranges: &'a [FieldRange],
     delimiter: &'a Regex,
-    // Controls whether or not to consume "empty" delimiters so that you don't need to write "\s+", only "\s"
-    greedy: bool,
 }
 
 impl<'a> RegexLineParser<'a> {
-    pub fn new(field_ranges: &'a [FieldRange], delimiter: &'a Regex, greedy: bool) -> Self {
+    pub fn new(field_ranges: &'a [FieldRange], delimiter: &'a Regex) -> Self {
         Self {
             field_ranges,
             delimiter,
-            greedy,
         }
     }
 }
@@ -85,16 +82,7 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
     where
         'a: 'b,
     {
-        let mut parts: Box<dyn Iterator<Item = _>> = if self.greedy {
-            Box::new(
-                self.delimiter
-                    .split(line)
-                    .filter(|s| !s.is_empty())
-                    .peekable(),
-            )
-        } else {
-            Box::new(self.delimiter.split(line).peekable())
-        };
+        let mut parts = self.delimiter.split(line).peekable();
         let mut iterator_index = 0;
 
         // Iterate over our ranges and write any fields that are contained by them.

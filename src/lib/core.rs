@@ -6,7 +6,7 @@
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{field_range::FieldRange, line_parser::LineParser, mmap::MmapChoice};
 use bstr::ByteSlice;
-use grep_cli::DecompressionReaderBuilder;
+use grep_cli::{DecompressionMatcherBuilder, DecompressionReaderBuilder};
 use memchr;
 use ripline::{
     line_buffer::{LineBuffer, LineBufferReader},
@@ -224,7 +224,14 @@ where
             }
             HckInput::Path(path) => {
                 if self.config.try_decompress {
-                    let reader = DecompressionReaderBuilder::new().build(&path)?;
+                    let matcher = DecompressionMatcherBuilder::new()
+                        .try_associate("*.gz", "pigz", vec!["-d", "-c"])
+                        .unwrap()
+                        .build()
+                        .unwrap(); // ignoring missing decompression programs, they will passthrough anyways
+                    let reader = DecompressionReaderBuilder::new()
+                        .matcher(matcher)
+                        .build(&path)?;
                     if self.allow_fastmode() {
                         self.hck_reader_fast(reader, &mut output)
                     } else {

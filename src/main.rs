@@ -139,10 +139,20 @@ struct Opts {
     #[structopt(short = "f", long)]
     fields: Option<String>,
 
+    /// Fields to exclude from the output, ex: 3,9-11,15-. Exclude fields are 1 based and inclusive.
+    /// Exclude fields take precedence over `fields`.
+    #[structopt(short = "e", long)]
+    exclude: Option<String>,
+
+    /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
+    /// Add the `-r` flag to treat as a regex.
+    #[structopt(short = "E", long)]
+    exclude_header: Option<Vec<Regex>>,
+
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
-    /// by deafult. add the `-r` flag to treat it as a regex.
+    /// by default. add the `-r` flag to treat it as a regex.
     #[structopt(short = "F", long)]
-    header_fields: Option<Vec<Regex>>,
+    header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
     #[structopt(short = "r", long)]
@@ -152,7 +162,13 @@ struct Opts {
     #[structopt(short = "z", long)]
     try_decompress: bool,
 
-    /// Disallow the posibility of using mmap
+    /// Be greedy with regex delimiter, i.e. `[[:space:]]` instead of `[[:space:]]+` and "empty"
+    /// fields will be thrown away. This is the default behavior of awk and is significantly more
+    /// preferment than a regex with a `+`.
+    #[structopt(short = "g", long, conflicts_with = "delimiter_is_literal")]
+    greedy_regex: bool,
+
+    /// Disallow the possibility of using mmap
     #[structopt(long)]
     no_mmap: bool,
 
@@ -235,7 +251,7 @@ fn run<W: Write>(
     };
 
     // Parser the fields in the context of the files being looked at
-    let (extra, fields) = match (&opts.fields, &opts.header_fields) {
+    let (mut extra, fields) = match (&opts.fields, &opts.header_field) {
         (Some(field_list), Some(header_fields)) => {
             let first_line = input.peek_first_line()?;
             let mut fields = FieldRange::from_list(field_list)?;
@@ -260,10 +276,55 @@ fn run<W: Write>(
             )?;
             (Some(first_line), fields)
         }
-        (None, None) => {
-            eprintln!("Must select one or both `fields` and 'header-fields`.");
-            exit(1);
+        (None, None) => (None, FieldRange::from_list("1-")?),
+    };
+
+    let fields = match (&opts.exclude, &opts.exclude_header) {
+        (Some(exclude), Some(exclude_header)) => {
+            let exclude = FieldRange::from_list(exclude)?;
+            let fields = FieldRange::exclude(fields, exclude);
+            let first_line = if let Some(first_line) = extra {
+                first_line
+            } else {
+                input.peek_first_line()?
+            };
+            let exclude_headers = FieldRange::from_header_list(
+                &exclude_header,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            extra = Some(first_line);
+            FieldRange::exclude(fields, exclude_headers)
         }
+        (Some(exclude), None) => {
+            let exclude = FieldRange::from_list(exclude)?;
+            FieldRange::exclude(fields, exclude)
+        }
+        (None, Some(exclude_header)) => {
+            let first_line = if let Some(first_line) = extra {
+                first_line
+            } else {
+                input.peek_first_line()?
+            };
+            let exclude_headers = FieldRange::from_header_list(
+                &exclude_header,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            extra = Some(first_line);
+            FieldRange::exclude(fields, exclude_headers)
+        }
+        (None, None) => fields,
+    };
+
+    let fields = if let Some(exclude) = &opts.exclude {
+        let exclude = FieldRange::from_list(exclude)?;
+        // remove all ranges in the exclude list from the fields list
+        FieldRange::exclude(fields, exclude)
+    } else {
+        fields
     };
 
     match &delim {
@@ -271,7 +332,7 @@ fn run<W: Write>(
             let mut core = Core::new(
                 &conf,
                 &fields,
-                RegexLineParser::new(&fields, &regex),
+                RegexLineParser::new(&fields, &regex, opts.greedy_regex),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;
@@ -314,11 +375,14 @@ mod test {
             delim_is_literal: false,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
-            header_fields: None,
+            header_field: None,
             header_is_regex: true,
             try_decompress: false,
             no_mmap,
             crlf: false,
+            exclude: None,
+            exclude_header: None,
+            greedy_regex: false,
         }
     }
 
@@ -337,11 +401,14 @@ mod test {
             delim_is_literal: true,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
-            header_fields: None,
+            header_field: None,
             header_is_regex: true,
             try_decompress: false,
             no_mmap,
             crlf: false,
+            exclude: None,
+            exclude_header: None,
+            greedy_regex: false,
         }
     }
 

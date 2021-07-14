@@ -256,7 +256,8 @@ where
         W: Write,
     {
         let iter = LineIter::new(self.config.line_terminator.as_byte(), bytes.as_bytes());
-        let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        let mut shuffler: Vec<Vec<&'static [u8]>> =
+            vec![vec![]; self.fields.iter().map(|f| f.pos).max().unwrap() + 1];
         for line in iter {
             let mut s: Vec<Vec<&[u8]>> = shuffler;
             self.line_parser.parse_line(
@@ -303,7 +304,6 @@ where
                     let slice = line
                         .get(f.low..=min(f.high, line.len().saturating_sub(1)))
                         .unwrap_or(&[]);
-                    // .unwrap_or(&[]);
                     slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                 });
 
@@ -353,7 +353,6 @@ where
                         let slice = line
                             .get(f.low..=min(f.high, line.len().saturating_sub(1)))
                             .unwrap_or(&[]);
-                        // .unwrap_or(&[]);
                         slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
                     });
                     output.join_append(
@@ -380,7 +379,8 @@ where
         mut output: W,
     ) -> Result<(), io::Error> {
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
-        let mut shuffler: Vec<Vec<&'static [u8]>> = vec![vec![]; self.fields.len()];
+        let mut shuffler: Vec<Vec<&'static [u8]>> =
+            vec![vec![]; self.fields.iter().map(|f| f.pos).max().unwrap() + 1];
         while reader.fill().unwrap() {
             let iter = LineIter::new(self.config.line_terminator.as_byte(), reader.buffer());
 

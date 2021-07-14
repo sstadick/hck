@@ -18,10 +18,11 @@ It is meant to be simple and easy to use while exploring datasets.
 ## Features
 
 - Reordering of output columns! i.e. if you use `-f4,2,8` the output columns will appear in the order `4`, `2`, `8`
-- Delimiter treated as a regex (with `-R`), i.e. you can split on multiple spaces without and extra pipe to `tr`!
+- Delimiter treated as a regex, i.e. you can split on multiple spaces without and extra pipe to `tr`!
 - Specification of output delimiter
 - Selection of columns by header string literal with the `-F` option, or by regex by setting the `-r` flag
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep). See [Decompression](#decompression).
+- Exclude fields by index or by header.
 - Speed
 
 ## Non-goals
@@ -119,6 +120,16 @@ USER    PID     %MEM    RSS     TTY     STAT    START   TIME    COMMAND
 root    1       0.0     14408   ?       Ss      Jun21   0:27    /sbin/init      splash
 root    2       0.0     0       ?       S       Jun21   0:01    [kthreadd]
 root    3       0.0     0       ?       I<      Jun21   0:00    [rcu_gp]
+```
+
+### Excluding output columns by header regex
+
+```bash
+❯  ps aux | hck -r -E "CPU" -E "^ST.*" | head -n4
+USER    PID     %MEM    VSZ     RSS     TTY     TIME    COMMAND
+root    1       0.0     170224  14408   ?       0:27    /sbin/init      splash
+root    2       0.0     0       0       ?       0:01    [kthreadd]
+root    3       0.0     0       0       ?       0:00    [rcu_gp]
 ```
 
 ### Changing the output record separator
@@ -271,13 +282,13 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 
 ## TODO
 
+- Add output compression detection when writing to a file
 - Don't reparse fields / headers for each new file
-- figure out how to better reuse / share a vec
+- Figure out how to better reuse / share a vec
 - Support indexing from the end (unlikely though)
 - Bake in grep / filtering somehow (this will not be done at the expense of the primary utility of `hck`)
 - Move tests from main to core
 - Add more tests all around
-- Add output compression detection when writing to a file
 - Experiment with parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## More packages and builds

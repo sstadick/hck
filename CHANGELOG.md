@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.1
+
+- Fix the version in the binary to match the actual version
+
 ## v0.5.0
 
 - Added `--exclude|-e` flag to select a set of fields to exclude. These fields may overlap with the `-f` flag and take precedence over fields selected by `-f`.

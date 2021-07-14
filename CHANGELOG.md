@@ -13,6 +13,7 @@
 - Fixes several issues in benchmarks
   - `choose` was not using fastest path and had the wrong input file
   - All tools splitting by a space regex were incorrectly parsing the header line in the multichar data, header line is now fixed
+- Fixes bug with reordering of only two fields
 
 ## v0.4.2
 

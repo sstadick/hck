@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.2-alpha (in progress)
+
+- [PR24](https://github.com/sstadick/hck/pull/24) Removed the now defunct profile guided optimization shell scripts and all references to them in favor of the `justfile` that was added in `v0.5.0`
+
 ## v0.5.1
 
 - Fix the version in the binary to match the actual version

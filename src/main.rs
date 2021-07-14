@@ -313,14 +313,6 @@ fn run<W: Write>(
         (None, None) => fields,
     };
 
-    let fields = if let Some(exclude) = &opts.exclude {
-        let exclude = FieldRange::from_list(exclude)?;
-        // remove all ranges in the exclude list from the fields list
-        FieldRange::exclude(fields, exclude)
-    } else {
-        fields
-    };
-
     match &delim {
         RegexOrStr::Regex(regex) => {
             let mut core = Core::new(

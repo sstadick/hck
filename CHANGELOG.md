@@ -7,6 +7,8 @@
 - As part of the `-e` additional, the default behavior if now headers or fields are specified is to assume `-f1-`, which allow the user to do `hck -e 3,8,290`.
 - pigz is now a supported decompression binary, if it's not present `hck` defaults back to `gzip`.
 - Decided against adding a greedy heuristic because it actually had worse performance on the most common case of `\s` (but better on `[[:space:]]`, which was odd).
+  - The place where this would make sense would be searching a literal space character greedily (like awk), but that kind of goes against the way the delimiters are documented to work
+  - It may be worth adding that special case at some point?
 - Moves CI to using justfile instead of pgo scripts.
 - Fixes several issues in benchmarks
   - `choose` was not using fastest path and had the wrong input file

@@ -6,7 +6,7 @@
 
 use bstr::ByteSlice;
 use regex::bytes::Regex;
-use std::{cmp::max, str::FromStr};
+use std::{cmp::max, collections::VecDeque, str::FromStr};
 use thiserror::Error;
 
 /// The fartest right possible field
@@ -195,7 +195,8 @@ impl FieldRange {
 
             while j < ranges.len()
                 && ranges[j].low <= ranges[i].high + 1
-                && (ranges[j].pos == ranges[i].pos || ranges[j].pos - 1 == ranges[i].pos)
+                && (ranges[j].pos == ranges[i].pos
+                    || ranges[j].pos.saturating_sub(1) == ranges[i].pos)
             {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
@@ -207,6 +208,100 @@ impl FieldRange {
     /// Test if a value is contained in this range
     pub fn contains(&self, value: usize) -> bool {
         value >= self.low && value <= self.high
+    }
+
+    /// Test if two ranges overlap
+    pub fn overlap(&self, other: &Self) -> bool {
+        self.low <= other.high && self.high >= other.low
+    }
+
+    /// Remove ranges in exclude from fields.
+    ///
+    /// This assumes both fields and exclude are in ascending order by `low` value.
+    pub fn exclude(fields: Vec<FieldRange>, exclude: Vec<FieldRange>) -> Vec<FieldRange> {
+        let mut fields: VecDeque<_> = fields.into_iter().collect();
+        let mut result = vec![];
+        let mut exclude_iter = exclude.into_iter();
+        let mut exclusion = if let Some(ex) = exclude_iter.next() {
+            ex
+        } else {
+            // Early return, no exclusions
+            return fields.into_iter().collect();
+        };
+        let mut field = fields.pop_front().unwrap(); // Must have at least one field
+        loop {
+            // Determine if there is any overlap at all
+            if exclusion.overlap(&field) {
+                // Determine the type of overlap
+                match (
+                    exclusion.contains(field.low),
+                    exclusion.contains(field.high),
+                ) {
+                    // Field: XXXXXXXX
+                    // Exclu:      XXXXXXXX
+                    (false, true) => {
+                        if exclusion.low != 0 {
+                            field.high = exclusion.low - 1;
+                        }
+                    }
+
+                    // Field:    XXXXXXXX
+                    // Exclu: XXXXX
+                    (true, false) => {
+                        if exclusion.high != MAX - 1 {
+                            field.low = exclusion.high + 1;
+                        }
+                    }
+                    // Field:    XXXXX
+                    // Exclu: XXXXXXXXXX
+                    (true, true) => {
+                        // Skip since we are excluding all fields in this range
+                        if let Some(f) = fields.pop_front() {
+                            field = f;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Field: XXXXXXXXXX
+                    // exclu:     XXXX
+                    (false, false) => {
+                        // Split the field
+                        // high side
+                        if exclusion.high != MAX - 1 {
+                            let mut high_field = field;
+                            high_field.low = exclusion.high + 1;
+                            fields.push_front(high_field)
+                        }
+
+                        // low side
+                        if exclusion.low != 0 {
+                            field.high = exclusion.low - 1;
+                        }
+                    }
+                }
+            } else if field.low > exclusion.high {
+                // if the exclusion is behind the field, advance the exclusion
+                if let Some(ex) = exclude_iter.next() {
+                    exclusion = ex;
+                } else {
+                    result.push(field);
+                    result.extend(fields.into_iter());
+                    break;
+                }
+            } else if field.high < exclusion.low {
+                // if the exclusion is ahead of the field, push the field
+                result.push(field);
+                if let Some(f) = fields.pop_front() {
+                    field = f;
+                } else {
+                    break;
+                }
+            } else {
+                unreachable!()
+            }
+        }
+        result
     }
 }
 
@@ -283,6 +378,204 @@ mod test {
                 pos: 3
             },],
             fields
+        );
+    }
+
+    #[test]
+    #[rustfmt::skip::macros(assert_eq)]
+    fn test_exclude_simple() {
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: MAX - 1, pos: 0}
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![FieldRange { low: 0, high: 0,       pos: 0}]
+            ),
+            "1"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 0},
+                FieldRange { low: 4, high: MAX - 1, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 0,        pos: 0},
+                    FieldRange { low: 3, high: 3,        pos: 0}
+                ]
+            ),
+            "1,4"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 2, high: 2,            pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 1,              pos: 0},
+                    FieldRange { low: 3, high: usize::MAX - 1, pos: 1}
+                ]
+            ),
+            "1,2,4-"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 0, high: 0,              pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 1, high: 2,       pos: 0},
+                    FieldRange { low: 3, high: MAX - 1, pos: 1}
+                ]
+            ),
+            "2,3,4-"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 0,       pos: 0},
+                    FieldRange { low: 3, high: MAX - 1, pos: 1}
+                ]
+            ),
+            "1,4-,5-8"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 2,       pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 0,       pos: 1},
+                    FieldRange { low: 3, high: MAX - 1, pos: 0},
+                    FieldRange { low: 4, high: 7,       pos: 2}
+                ]
+            ),
+            "4-,1,5-8"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 4, high: MAX - 1, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 3,       pos: 0}
+                ]
+            ),
+            "-4"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 8, high: MAX - 1, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX - 1, pos: 0}],
+                vec![
+                    FieldRange { low: 0, high: 7,       pos: 0}
+                ]
+            ),
+            "-4,5-8"
+        );
+    }
+    #[test]
+    #[rustfmt::skip::macros(assert_eq)]
+    fn test_exclude_complex() {
+        assert_eq!(
+            vec![
+                FieldRange { low: 1, high: 3, pos: 0},
+                FieldRange { low: 7, high: 14, pos: 1},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: 3, pos: 0}, FieldRange { low: 7, high: MAX - 1, pos: 1}],
+                vec![FieldRange { low: 0, high: 0, pos: 0}, FieldRange { low: 15, high: MAX - 1, pos: 0}]
+            ),
+            "-f1-4,8- : -e1,16-"
+        );
+        let empty: Vec<FieldRange> = vec![];
+        assert_eq!(
+            empty,
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: MAX-1, pos: 0}],
+                vec![FieldRange { low: 0, high: MAX-1, pos: 0}]
+            ),
+            "-f1- : -e1-"
+        );
+        assert_eq!(
+            vec![
+                FieldRange { low: 0, high: 0, pos: 0},
+                FieldRange { low: 9, high: 9, pos: 3},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: 0, pos: 0}, FieldRange { low: 3, high: 3, pos: 1 }, FieldRange { low: 7, high: 7, pos: 2}, FieldRange { low: 9, high: 9, pos: 3}],
+                vec![FieldRange { low: 3, high: 7, pos: 0}]
+            ),
+            "-f1,4,8,10 : -e4-8"
+        );
+        // Fields: XXXXXXXXXXX
+        // Exclud:      XXXXXXXXX
+        assert_eq!(
+            vec![
+                FieldRange { low: 0, high: 3, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 0, high: 9, pos: 0}],
+                vec![FieldRange { low: 4, high: MAX - 1, pos: 0}]
+            ),
+            "-f1-10 : -e5-"
+        );
+        // Fields:      XXXXXXXXXXXXX
+        // Exclud:  XXXXXXXX
+        assert_eq!(
+            vec![
+                FieldRange { low: 15, high: 19, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 9, high: 19, pos: 0}],
+                vec![FieldRange { low: 4, high: 14, pos: 0}]
+            ),
+            "-f10-20 : -e5-15"
+        );
+        // Fields: XXXXXXXXXXXXXX
+        // Exclud:    XXXXXXX
+        assert_eq!(
+            vec![
+                FieldRange { low: 9, high: 11, pos: 0},
+                FieldRange { low: 16, high: 19, pos: 0},
+            ],
+            FieldRange::exclude(
+                vec![FieldRange { low: 9, high: 19, pos: 0}],
+                vec![FieldRange { low: 12, high: 15, pos: 0}]
+            ),
+            "-f10-20 : -e13-16"
+        );
+        // Fields:      XXX
+        // Exclud:    XXXXXXX
+        assert_eq!(
+            empty,
+            FieldRange::exclude(
+                vec![FieldRange { low: 12, high: 15, pos: 0}],
+                vec![FieldRange { low: 9, high: 19, pos: 0}]
+            ),
+            "-f13-16 : -e10-20"
+        );
+        // Fields: XXXXXXXX      XXXXX
+        // Exclud:     XXXXXXXXXXXXX
+        assert_eq!(
+            vec![FieldRange { low: 4, high: 8, pos: 0 }, FieldRange { low: 25, high: 29, pos: 1}],
+            FieldRange::exclude(
+                vec![FieldRange { low: 4, high: 15, pos: 0}, FieldRange { low: 19, high: 29, pos: 1}],
+                vec![FieldRange { low: 9, high: 24, pos: 0}]
+            ),
+            "-f5-16,20-30 : -e10-25"
         );
     }
 }

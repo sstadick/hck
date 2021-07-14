@@ -49,7 +49,7 @@ impl<'a> LineParser<'a> for SubStrLineParser<'a> {
             for _ in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
-                        // Guaranteed to be in range since staging is created based on field pos anyways
+                        // Guaranteed to be in range since shuffler is created based on field pos anyways
                         if let Some(reshuffled_range) = shuffler.get_mut(pos) {
                             reshuffled_range.push(part)
                         }
@@ -101,7 +101,7 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
             for _ in 0..=high - low {
                 match parts.next() {
                     Some(part) => {
-                        // Guaranteed to be in range since staging is created based on field pos anyways
+                        // Guaranteed to be in range since shuffler is created based on field pos anyways
                         if let Some(reshuffled_range) = shuffler.get_mut(pos) {
                             reshuffled_range.push(part)
                         } else {

@@ -139,10 +139,20 @@ struct Opts {
     #[structopt(short = "f", long)]
     fields: Option<String>,
 
+    /// Fields to exclude from the output, ex: 3,9-11,15-. Exclude fields are 1 based and inclusive.
+    /// Exclude fields take precedence over `fields`.
+    #[structopt(short = "e", long)]
+    exclude: Option<String>,
+
+    /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
+    /// Add the `-r` flag to treat as a regex.
+    #[structopt(short = "E", long)]
+    exclude_header: Option<Vec<Regex>>,
+
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
-    /// by deafult. add the `-r` flag to treat it as a regex.
+    /// by default. add the `-r` flag to treat it as a regex.
     #[structopt(short = "F", long)]
-    header_fields: Option<Vec<Regex>>,
+    header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
     #[structopt(short = "r", long)]
@@ -152,7 +162,7 @@ struct Opts {
     #[structopt(short = "z", long)]
     try_decompress: bool,
 
-    /// Disallow the posibility of using mmap
+    /// Disallow the possibility of using mmap
     #[structopt(long)]
     no_mmap: bool,
 
@@ -235,7 +245,7 @@ fn run<W: Write>(
     };
 
     // Parser the fields in the context of the files being looked at
-    let (extra, fields) = match (&opts.fields, &opts.header_fields) {
+    let (mut extra, fields) = match (&opts.fields, &opts.header_field) {
         (Some(field_list), Some(header_fields)) => {
             let first_line = input.peek_first_line()?;
             let mut fields = FieldRange::from_list(field_list)?;
@@ -260,11 +270,53 @@ fn run<W: Write>(
             )?;
             (Some(first_line), fields)
         }
-        (None, None) => {
-            eprintln!("Must select one or both `fields` and 'header-fields`.");
-            exit(1);
-        }
+        (None, None) => (None, FieldRange::from_list("1-")?),
     };
+
+    let fields = match (&opts.exclude, &opts.exclude_header) {
+        (Some(exclude), Some(exclude_header)) => {
+            let exclude = FieldRange::from_list(exclude)?;
+            let fields = FieldRange::exclude(fields, exclude);
+            let first_line = if let Some(first_line) = extra {
+                first_line
+            } else {
+                input.peek_first_line()?
+            };
+            let exclude_headers = FieldRange::from_header_list(
+                &exclude_header,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            extra = Some(first_line);
+            FieldRange::exclude(fields, exclude_headers)
+        }
+        (Some(exclude), None) => {
+            let exclude = FieldRange::from_list(exclude)?;
+            FieldRange::exclude(fields, exclude)
+        }
+        (None, Some(exclude_header)) => {
+            let first_line = if let Some(first_line) = extra {
+                first_line
+            } else {
+                input.peek_first_line()?
+            };
+            let exclude_headers = FieldRange::from_header_list(
+                &exclude_header,
+                first_line.as_bytes(),
+                &delim,
+                opts.header_is_regex,
+            )?;
+            extra = Some(first_line);
+            FieldRange::exclude(fields, exclude_headers)
+        }
+        (None, None) => fields,
+    };
+
+    // No point processing empty fields
+    if fields.is_empty() {
+        return Ok(());
+    }
 
     match &delim {
         RegexOrStr::Regex(regex) => {
@@ -314,11 +366,13 @@ mod test {
             delim_is_literal: false,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
-            header_fields: None,
+            header_field: None,
             header_is_regex: true,
             try_decompress: false,
             no_mmap,
             crlf: false,
+            exclude: None,
+            exclude_header: None,
         }
     }
 
@@ -337,11 +391,40 @@ mod test {
             delim_is_literal: true,
             output_delimiter: "\t".to_owned(),
             fields: Some(fields.to_owned()),
-            header_fields: None,
+            header_field: None,
             header_is_regex: true,
             try_decompress: false,
             no_mmap,
             crlf: false,
+            exclude: None,
+            exclude_header: None,
+        }
+    }
+
+    /// Build a set of opts for testing
+    fn build_opts_generic(
+        input_file: impl AsRef<Path>,
+        output_file: impl AsRef<Path>,
+        fields: &str,
+        exclude: Option<String>,
+        no_mmap: bool,
+        delimiter: &str,
+        delim_is_literal: bool,
+    ) -> Opts {
+        Opts {
+            input: vec![input_file.as_ref().to_path_buf()],
+            output: Some(output_file.as_ref().to_path_buf()),
+            delimiter: delimiter.to_string(),
+            delim_is_literal,
+            output_delimiter: "\t".to_owned(),
+            fields: Some(fields.to_owned()),
+            header_field: None,
+            header_is_regex: true,
+            try_decompress: false,
+            no_mmap,
+            crlf: false,
+            exclude,
+            exclude_header: None,
         }
     }
 
@@ -396,6 +479,177 @@ mod test {
     }
 
     const FOURSPACE: &str = "    ";
+
+    #[rstest]
+    fn test_exclude_one(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "1,3",
+            Some(String::from("3")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["a",], vec!["1"]]);
+    }
+
+    #[rstest]
+    fn test_exclude_range_overlap_front(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "3-",
+            Some(String::from("-5")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["f",], vec!["6"]]);
+    }
+
+    #[rstest]
+    fn test_exclude_range_overlap_back(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "2-5",
+            Some(String::from("3-")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["b",], vec!["2"]]);
+    }
+
+    #[rstest]
+    fn test_exclude_range_split_fields(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "1-",
+            Some(String::from("3-5")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["a", "b", "f"], vec!["1", "2", "6"]]);
+    }
+
+    #[rstest]
+    fn test_exclude_range_all(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "4,3",
+            Some(String::from("2-5")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert!(filtered.is_empty());
+    }
+
+    #[rstest]
+    fn test_exclude_range_split_fields_reorder(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            "4-6,1-3",
+            Some(String::from("3-5")),
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["f", "a", "b"], vec!["6", "1", "2"]]);
+    }
 
     #[rstest]
     #[rustfmt::skip::macros(vec)]

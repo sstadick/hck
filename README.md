@@ -18,10 +18,11 @@ It is meant to be simple and easy to use while exploring datasets.
 ## Features
 
 - Reordering of output columns! i.e. if you use `-f4,2,8` the output columns will appear in the order `4`, `2`, `8`
-- Delimiter treated as a regex (with `-R`), i.e. you can split on multiple spaces without and extra pipe to `tr`!
+- Delimiter treated as a regex, i.e. you can split on multiple spaces without and extra pipe to `tr`!
 - Specification of output delimiter
 - Selection of columns by header string literal with the `-F` option, or by regex by setting the `-r` flag
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep). See [Decompression](#decompression).
+- Exclude fields by index or by header.
 - Speed
 
 ## Non-goals
@@ -109,6 +110,26 @@ PID     USER    %CPU    %MEM    VSZ     RSS     TTY     STAT    START   TIME    
 1       root    0.0     0.0     169452  13472   ?       Ss      Jun21   0:19    /sbin/init      splash
 2       root    0.0     0.0     0       0       ?       S       Jun21   0:00    [kthreadd]
 3       root    0.0     0.0     0       0       ?       I<      Jun21   0:00    [rcu_gp]
+```
+
+### Excluding output columns
+
+```bash
+❯ ps aux | hck -e3,5 | head -n4
+USER    PID     %MEM    RSS     TTY     STAT    START   TIME    COMMAND
+root    1       0.0     14408   ?       Ss      Jun21   0:27    /sbin/init      splash
+root    2       0.0     0       ?       S       Jun21   0:01    [kthreadd]
+root    3       0.0     0       ?       I<      Jun21   0:00    [rcu_gp]
+```
+
+### Excluding output columns by header regex
+
+```bash
+❯  ps aux | hck -r -E "CPU" -E "^ST.*" | head -n4
+USER    PID     %MEM    VSZ     RSS     TTY     TIME    COMMAND
+root    1       0.0     170224  14408   ?       0:27    /sbin/init      splash
+root    2       0.0     0       0       ?       0:01    [kthreadd]
+root    3       0.0     0       0       ?       0:00    [rcu_gp]
 ```
 
 ### Changing the output record separator
@@ -202,36 +223,38 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 | Command                                                      |      Mean [s] | Min [s] | Max [s] |    Relative |
 | :----------------------------------------------------------- | ------------: | ------: | ------: | ----------: |
-| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.387 ± 0.019 |   1.369 |   1.407 |        1.00 |
-| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.549 ± 0.002 |   1.547 |   1.552 | 1.12 ± 0.02 |
-| `hck -d, -f1,8,19  ./hyper_data.txt > /dev/null`             | 1.437 ± 0.001 |   1.436 |   1.438 | 1.04 ± 0.01 |
-| `hck -d, -f1,8,19  --no-mmap ./hyper_data.txt > /dev/null`   | 1.706 ± 0.017 |   1.694 |   1.735 | 1.23 ± 0.02 |
-| `choose -f , -i ./hyper_data.txt 0 7 18  > /dev/null`        | 4.333 ± 0.063 |   4.254 |   4.384 | 3.12 ± 0.06 |
-| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.708 ± 0.002 |   1.705 |   1.712 | 1.23 ± 0.02 |
-| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.600 ± 0.010 |   5.589 |   5.615 | 4.04 ± 0.06 |
-| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 4.933 ± 0.059 |   4.901 |   5.038 | 3.56 ± 0.06 |
-| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 7.421 ± 1.302 |   6.797 |   9.749 | 5.35 ± 0.94 |  |
+| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.464 ± 0.002 |   1.462 |   1.466 |        1.00 |
+| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.642 ± 0.003 |   1.640 |   1.648 | 1.12 ± 0.00 |
+| `hck -d, -f1,8,19  ./hyper_data.txt > /dev/null`             | 1.527 ± 0.002 |   1.525 |   1.529 | 1.04 ± 0.00 |
+| `hck -d, -f1,8,19  --no-mmap ./hyper_data.txt > /dev/null`   | 1.887 ± 0.004 |   1.883 |   1.893 | 1.29 ± 0.00 |
+| `choose -f , -i ./hyper_data.txt 0 7 18  > /dev/null`        | 4.323 ± 0.034 |   4.293 |   4.370 | 2.95 ± 0.02 |
+| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.723 ± 0.003 |   1.719 |   1.728 | 1.18 ± 0.00 |
+| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.569 ± 0.004 |   5.563 |   5.573 | 3.80 ± 0.01 |
+| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 4.916 ± 0.014 |   4.897 |   4.933 | 3.36 ± 0.01 |
+| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.792 ± 0.017 |   6.769 |   6.813 | 4.64 ± 0.01 |
 
 ### Multi-character delimiter benchmark
 
-| Command                                                                                                    |       Mean [s] | Min [s] | Max [s] |     Relative |
-| :--------------------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | -----------: |
-| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null` (note, that's three spaces)                 |  1.827 ± 0.009 |   1.818 |   1.842 |         1.00 |
-| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null` (note, that's three spaces)       |  2.123 ± 0.013 |   2.105 |   2.133 |  1.16 ± 0.01 |
-| `hck -d'[[:space:]]+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                     |  9.366 ± 0.202 |   9.009 |   9.506 |  5.13 ± 0.11 |
-| `hck -d'[[:space:]]+' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                           |  9.636 ± 0.030 |   9.588 |   9.666 |  5.27 ± 0.03 |
-| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                              | 10.038 ± 0.005 |  10.036 |  10.047 |  5.49 ± 0.03 |
-| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                                    |  9.913 ± 0.113 |   9.725 |   9.997 |  5.43 ± 0.07 |
-| `choose -f '   ' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                                        |  6.600 ± 0.071 |   6.555 |   6.723 |  3.61 ± 0.04 |
-| `choose -f '[[:space:]]' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                                | 10.764 ± 0.041 |  10.703 |  10.809 |  5.89 ± 0.04 |
-| `choose -f '\s' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                                         | 36.866 ± 0.144 |  36.682 |  37.076 | 20.18 ± 0.13 |
-| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                                    |  6.602 ± 0.024 |   6.568 |   6.631 |  3.61 ± 0.02 |
-| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                                 |  5.894 ± 0.052 |   5.850 |   5.983 |  3.23 ± 0.03 |
-| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                          | 10.962 ± 0.190 |  10.733 |  11.145 |  6.00 ± 0.11 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                                |  7.604 ± 0.096 |   7.521 |   7.730 |  4.16 ± 0.06 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tail -n+2 \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.757 ± 0.191 |   6.447 |   6.943 |  3.70 ± 0.11 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -Ld' ' -f1,8,19 > /dev/null`                                |  6.313 ± 0.040 |   6.269 |   6.365 |  3.45 ± 0.03 |
-| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`                        |  6.278 ± 0.036 |   6.238 |   6.328 |  3.44 ± 0.03 |
+| Command                                                                                       |       Mean [s] | Min [s] | Max [s] |     Relative |
+| :-------------------------------------------------------------------------------------------- | -------------: | ------: | ------: | -----------: |
+| `hck -Ld'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                |  1.718 ± 0.003 |   1.715 |   1.722 |         1.00 |
+| `hck -Ld'   ' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                      |  2.191 ± 0.072 |   2.135 |   2.291 |  1.28 ± 0.04 |
+| `hck -d'   ' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                 |  2.180 ± 0.029 |   2.135 |   2.208 |  1.27 ± 0.02 |
+| `hck -d'   ' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                       |  2.542 ± 0.014 |   2.529 |   2.565 |  1.48 ± 0.01 |
+| `hck -d'[[:space:]]+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                        |  8.597 ± 0.023 |   8.575 |   8.631 |  5.00 ± 0.02 |
+| `hck -d'[[:space:]]+' --no-mmap -f1,8,19 ./hyper_data_multichar.txt > /dev/null`              |  8.890 ± 0.013 |   8.871 |   8.903 |  5.17 ± 0.01 |
+| `hck -d'\s+' -f1,8,19 ./hyper_data_multichar.txt > /dev/null`                                 | 10.014 ± 0.247 |   9.844 |  10.449 |  5.83 ± 0.14 |
+| `hck -d'\s+' -f1,8,19 --no-mmap ./hyper_data_multichar.txt > /dev/null`                       | 10.173 ± 0.035 |  10.111 |  10.193 |  5.92 ± 0.02 |
+| `choose -f '   ' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                           |  6.537 ± 0.148 |   6.452 |   6.799 |  3.80 ± 0.09 |
+| `choose -f '[[:space:]]' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                   | 10.656 ± 0.219 |  10.484 |  10.920 |  6.20 ± 0.13 |
+| `choose -f '\s' -i ./hyper_data_multichar.txt 0 7 18  > /dev/null`                            | 37.238 ± 0.153 |  37.007 |  37.383 | 21.67 ± 0.10 |
+| `awk -F' ' '{print $1, $8 $19}' ./hyper_data_multichar.txt > /dev/null`                       |  6.673 ± 0.064 |   6.595 |   6.734 |  3.88 ± 0.04 |
+| `awk -F'   ' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`                    |  5.947 ± 0.098 |   5.896 |   6.121 |  3.46 ± 0.06 |
+| `awk -F'[:space:]+' '{print $1, $8, $19}' ./hyper_data_multichar.txt > /dev/null`             | 11.080 ± 0.215 |  10.881 |  11.376 |  6.45 ± 0.13 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| cut -d ' ' -f1,8,19 > /dev/null`                   |  7.471 ± 0.066 |   7.397 |   7.561 |  4.35 ± 0.04 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| xsv select -d ' ' 1,8,19 --no-headers > /dev/null` |  6.172 ± 0.068 |   6.071 |   6.235 |  3.59 ± 0.04 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| hck -Ld' ' -f1,8,19 > /dev/null`                   |  6.171 ± 0.112 |   5.975 |   6.243 |  3.59 ± 0.07 |
+| `< ./hyper_data_multichar.txt tr -s ' ' \| tsv-select -d ' ' -f 1,8,19 > /dev/null`           |  6.202 ± 0.130 |   5.984 |   6.290 |  3.61 ± 0.08 |
 
 ## Decompression
 
@@ -239,6 +262,7 @@ The following table indicates the file extension / binary pairs that are used to
 
 | Extension | Binary                   | Type       |
 | :-------- | :----------------------- | :--------- |
+| `*.gz`    | `pigz -d -c`             | gzip       |
 | `*.gz`    | `gzip -d -c`             | gzip       |
 | `*.tgz`   | `gzip -d -c`             | gzip       |
 | `*.bz2`   | `bzip2 -d -c`            | bzip2      |
@@ -252,7 +276,7 @@ The following table indicates the file extension / binary pairs that are used to
 | `*.zstd`  | `zstd -q -d -c`          | zstd       |
 | `*.Z`     | `uncompress -c`          | uncompress |
 
-When a file with one of the extensions above is found, `hck` will open a subprocess running the the decompression tool listed above and read from the output of that tool. If the binary can't be found then `hck` will try to read the compressed file as is. See [`grep_cli`](https://github.com/BurntSushi/ripgrep/blob/9eddb71b8e86a04d7048b920b9b50a2e97068d03/crates/cli/src/decompress.rs#L468) for source code. The end goal is to add a similar preprocessor as [ripgrep](https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#preprocessor).
+When a file with one of the extensions above is found, `hck` will open a subprocess running the the decompression tool listed above and read from the output of that tool. If the binary can't be found then `hck` will try to read the compressed file as is. See [`grep_cli`](https://github.com/BurntSushi/ripgrep/blob/9eddb71b8e86a04d7048b920b9b50a2e97068d03/crates/cli/src/decompress.rs#L468) for source code. The end goal is to add a similar preprocessor as [ripgrep](https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#preprocessor). Where there are multiple binaries for a given type, they are tried in the order listed above.
 
 ## Profile Guided Optimization
 
@@ -260,15 +284,13 @@ See the `pgo*.sh` scripts for how to build this with optimizations. You will nee
 
 ## TODO
 
-- Add complement argument
+- Add output compression detection when writing to a file
 - Don't reparse fields / headers for each new file
-- figure out how to better reuse / share a vec
+- Figure out how to better reuse / share a vec
 - Support indexing from the end (unlikely though)
 - Bake in grep / filtering somehow (this will not be done at the expense of the primary utility of `hck`)
 - Move tests from main to core
 - Add more tests all around
-- Add pigz support
-- Add a greedy/non-greedy option that will ignore blank fields `split.filter(|s| !s.is_empty() || config.opt.non_greedy)`
 - Experiment with parallel parser as described [here](https://www.semanticscholar.org/paper/Instant-Loading-for-Main-Memory-Databases-M%C3%BChlbauer-R%C3%B6diger/a1b067fc941d6727169ec18a882080fa1f074595?p2df) This should be very doable given we don't care about escaping quotes and such.
 
 ## More packages and builds

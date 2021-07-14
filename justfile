@@ -38,7 +38,7 @@ run-instrumented-binary: generate-pgo-data
     {{justfile_directory()}}/target/release/hck -d, -f1,8,19 --no-mmap -e 8 "{{data}}" > /dev/null
 
     # make multi-space file
-    {{justfile_directory()}}/target/release/hck -Ld, -D '   ' -e8 "{{data}}" > "{{spaced-data}}"
+    {{justfile_directory()}}/target/release/hck -Ld, -D '   ' -f1,8,19 -e 8 "{{data}}" > "{{spaced-data}}"
 
     # multi byte regex
     {{justfile_directory()}}/target/release/hck -d '\s+' -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null

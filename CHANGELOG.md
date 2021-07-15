@@ -4,6 +4,7 @@
 
 - [PR24](https://github.com/sstadick/hck/pull/24) Removed the now defunct profile guided optimization shell scripts and all references to them in favor of the `justfile` that was added in `v0.5.0`
 - [Bugfix](https://github.com/sstadick/hck/issues/26) fixes incorrect handling of header line for non-stdin inputs, fixes incorrect parsing of last header fields (now strips newline before matching), fixes option parsing so that the `-F` and `-E` options wont' try to consume the positional input arguments. Huge thanks to @learnbyexample for their detailed bug report.
+- Change: An error will now be raised when a specified header is not found. This differs from the convention used by the selecion-by-index, which tries to match `cut`. The reasoning is that it is generally harder to type out each header field and if a header is not found you want to know about it.
 
 ## v0.5.1
 

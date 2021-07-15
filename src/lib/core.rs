@@ -228,6 +228,7 @@ impl<'a> CoreConfigBuilder<'a> {
     }
 
     /// Whether or not the parser is a regex
+    #[allow(clippy::wrong_self_convention)]
     pub fn is_regex_parser(mut self, is_regex: bool) -> Self {
         self.config.is_parser_regex = is_regex;
         self

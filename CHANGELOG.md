@@ -1,8 +1,9 @@
 # Changelog
 
-## v0.5.2-alpha (in progress)
+## v0.5.2
 
 - [PR24](https://github.com/sstadick/hck/pull/24) Removed the now defunct profile guided optimization shell scripts and all references to them in favor of the `justfile` that was added in `v0.5.0`
+- [Bugfix](https://github.com/sstadick/hck/issues/26) fixes incorrect handling of header line for non-stdin inputs, fixes incorrect parsing of last header fields (now strips newline before matching), fixes option parsing so that the `-F` and `-E` options wont' try to consume the positional input arguments. Huge thanks to @learnbyexample for their detailed bug report.
 
 ## v0.5.1
 

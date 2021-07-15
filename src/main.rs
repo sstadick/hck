@@ -1,10 +1,9 @@
 use anyhow::{Context, Error, Result};
-use bstr::ByteSlice;
 use env_logger::Env;
 use grep_cli::stdout;
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
-    field_range::{FieldRange, RegexOrStr},
+    field_range::RegexOrStr,
     line_parser::{RegexLineParser, SubStrLineParser},
     mmap::MmapChoice,
 };
@@ -146,12 +145,12 @@ struct Opts {
 
     /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
     /// Add the `-r` flag to treat as a regex.
-    #[structopt(short = "E", long)]
+    #[structopt(short = "E", long, multiple = true, number_of_values = 1)]
     exclude_header: Option<Vec<Regex>>,
 
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
     /// by default. add the `-r` flag to treat it as a regex.
-    #[structopt(short = "F", long)]
+    #[structopt(short = "F", long, multiple = true, number_of_values = 1)]
     header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
@@ -200,24 +199,30 @@ fn main() -> Result<()> {
     } else {
         LineTerminator::default()
     };
-    conf_builder.line_terminator(line_term);
+    conf_builder = conf_builder.line_terminator(line_term);
 
     let mmap = if opts.no_mmap {
         MmapChoice::never()
     } else {
         unsafe { MmapChoice::auto() }
     };
-    conf_builder.mmap(mmap);
-    conf_builder.delimiter(&opts.delimiter.as_bytes());
-    conf_builder.output_delimiter(&opts.output_delimiter.as_bytes());
-    conf_builder.is_regex_parser(!opts.delim_is_literal);
-    conf_builder.try_decompress(opts.try_decompress);
-    let conf = conf_builder.build();
+    let conf = conf_builder
+        .mmap(mmap)
+        .delimiter(&opts.delimiter.as_bytes())
+        .output_delimiter(&opts.output_delimiter.as_bytes())
+        .is_regex_parser(!opts.delim_is_literal)
+        .try_decompress(opts.try_decompress)
+        .fields(opts.fields.as_deref())
+        .headers(opts.header_field.as_deref())
+        .exclude(opts.exclude.as_deref())
+        .exclude_headers(opts.exclude_header.as_deref())
+        .header_is_regex(opts.header_is_regex)
+        .build()?;
 
     let mut line_buffer = LineBufferBuilder::new().build();
 
     for input in inputs.into_iter() {
-        if let Err(err) = run(input, &mut writer, &opts, conf, &mut line_buffer) {
+        if let Err(err) = run(input, &mut writer, &conf, &mut line_buffer) {
             if is_broken_pipe(&err) {
                 exit(0)
             }
@@ -232,96 +237,21 @@ fn main() -> Result<()> {
 fn run<W: Write>(
     input: HckInput<PathBuf>,
     writer: &mut W,
-    opts: &Opts,
-    conf: CoreConfig,
+    conf: &CoreConfig,
     line_buffer: &mut LineBuffer,
 ) -> Result<()> {
     let writer = BufWriter::new(writer);
 
-    let delim = if conf.is_parser_regex() {
-        RegexOrStr::Regex(Regex::new(conf.delimiter().to_str()?)?)
-    } else {
-        RegexOrStr::Str(conf.delimiter().to_str()?)
-    };
-
-    // Parser the fields in the context of the files being looked at
-    let (mut extra, fields) = match (&opts.fields, &opts.header_field) {
-        (Some(field_list), Some(header_fields)) => {
-            let first_line = input.peek_first_line()?;
-            let mut fields = FieldRange::from_list(field_list)?;
-            let header_fields = FieldRange::from_header_list(
-                header_fields,
-                first_line.as_bytes(),
-                &delim,
-                opts.header_is_regex,
-            )?;
-            fields.extend(header_fields.into_iter());
-            FieldRange::post_process_ranges(&mut fields);
-            (Some(first_line), fields)
-        }
-        (Some(field_list), None) => (None, FieldRange::from_list(field_list)?),
-        (None, Some(header_fields)) => {
-            let first_line = input.peek_first_line()?;
-            let fields = FieldRange::from_header_list(
-                header_fields,
-                first_line.as_bytes(),
-                &delim,
-                opts.header_is_regex,
-            )?;
-            (Some(first_line), fields)
-        }
-        (None, None) => (None, FieldRange::from_list("1-")?),
-    };
-
-    let fields = match (&opts.exclude, &opts.exclude_header) {
-        (Some(exclude), Some(exclude_header)) => {
-            let exclude = FieldRange::from_list(exclude)?;
-            let fields = FieldRange::exclude(fields, exclude);
-            let first_line = if let Some(first_line) = extra {
-                first_line
-            } else {
-                input.peek_first_line()?
-            };
-            let exclude_headers = FieldRange::from_header_list(
-                &exclude_header,
-                first_line.as_bytes(),
-                &delim,
-                opts.header_is_regex,
-            )?;
-            extra = Some(first_line);
-            FieldRange::exclude(fields, exclude_headers)
-        }
-        (Some(exclude), None) => {
-            let exclude = FieldRange::from_list(exclude)?;
-            FieldRange::exclude(fields, exclude)
-        }
-        (None, Some(exclude_header)) => {
-            let first_line = if let Some(first_line) = extra {
-                first_line
-            } else {
-                input.peek_first_line()?
-            };
-            let exclude_headers = FieldRange::from_header_list(
-                &exclude_header,
-                first_line.as_bytes(),
-                &delim,
-                opts.header_is_regex,
-            )?;
-            extra = Some(first_line);
-            FieldRange::exclude(fields, exclude_headers)
-        }
-        (None, None) => fields,
-    };
-
+    let (extra, fields) = conf.parse_fields(&input)?;
     // No point processing empty fields
     if fields.is_empty() {
         return Ok(());
     }
 
-    match &delim {
+    match conf.parsed_delim() {
         RegexOrStr::Regex(regex) => {
             let mut core = Core::new(
-                &conf,
+                conf,
                 &fields,
                 RegexLineParser::new(&fields, &regex),
                 line_buffer,
@@ -402,14 +332,17 @@ mod test {
     }
 
     /// Build a set of opts for testing
+    #[allow(clippy::too_many_arguments)]
     fn build_opts_generic(
         input_file: impl AsRef<Path>,
         output_file: impl AsRef<Path>,
-        fields: &str,
-        exclude: Option<String>,
+        fields: Option<&str>,
+        header_field: Option<Vec<Regex>>,
+        exclude: Option<&str>,
         no_mmap: bool,
         delimiter: &str,
         delim_is_literal: bool,
+        header_is_regex: bool,
     ) -> Opts {
         Opts {
             input: vec![input_file.as_ref().to_path_buf()],
@@ -417,13 +350,13 @@ mod test {
             delimiter: delimiter.to_string(),
             delim_is_literal,
             output_delimiter: "\t".to_owned(),
-            fields: Some(fields.to_owned()),
-            header_field: None,
-            header_is_regex: true,
+            fields: fields.map(|f| f.to_owned()),
+            header_field,
+            header_is_regex,
             try_decompress: false,
             no_mmap,
             crlf: false,
-            exclude,
+            exclude: exclude.map(|e| e.to_owned()),
             exclude_header: None,
         }
     }
@@ -465,14 +398,19 @@ mod test {
                 unsafe { MmapChoice::auto() }
             })
             .output_delimiter(opts.output_delimiter.as_bytes())
-            .build();
+            .headers(opts.header_field.as_deref())
+            .fields(opts.fields.as_deref())
+            .exclude(opts.exclude.as_deref())
+            .exclude_headers(opts.exclude_header.as_deref())
+            .header_is_regex(opts.header_is_regex)
+            .build()
+            .unwrap();
         let mut line_buffer = LineBufferBuilder::new().build();
         let mut writer = BufWriter::new(File::create(output).unwrap());
         run(
             HckInput::Path(input.as_ref().to_owned()),
             &mut writer,
-            opts,
-            conf,
+            &conf,
             &mut line_buffer,
         )
         .unwrap();
@@ -492,11 +430,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "1,3",
-            Some(String::from("3")),
+            Some("1,3"),
+            None,
+            Some("3"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
         write_file(&input_file, data, hck_delim);
@@ -518,11 +458,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "3-",
-            Some(String::from("-5")),
+            Some("3-"),
+            None,
+            Some("-5"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f"],
@@ -547,11 +489,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "2-5",
-            Some(String::from("3-")),
+            Some("2-5"),
+            None,
+            Some("3-"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f"],
@@ -576,11 +520,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "1-",
-            Some(String::from("3-5")),
+            Some("1-"),
+            None,
+            Some("3-5"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f"],
@@ -605,11 +551,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "4,3",
-            Some(String::from("2-5")),
+            Some("4,3"),
+            None,
+            Some("2-5"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f"],
@@ -634,11 +582,13 @@ mod test {
         let opts = build_opts_generic(
             &input_file,
             &output_file,
-            "4-6,1-3",
-            Some(String::from("3-5")),
+            Some("4-6,1-3"),
+            None,
+            Some("3-5"),
             no_mmap,
             hck_delim,
             delim_is_literal,
+            false,
         );
         let data = vec![
             vec!["a", "b", "c", "d", "e", "f"],
@@ -649,6 +599,67 @@ mod test {
         let filtered = read_tsv(output_file);
 
         assert_eq!(filtered, vec![vec!["f", "a", "b"], vec!["6", "1", "2"]]);
+    }
+
+    #[rstest]
+    fn test_headers_simple(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            None,
+            Some(vec![Regex::new("a").unwrap()]),
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f"],
+            vec!["1", "2", "3", "4", "5", "6"],
+        ];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["a"], vec!["1"]]);
+    }
+
+    #[rstest]
+    fn test_headers_simple2(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            None,
+            Some(vec![Regex::new("a").unwrap(), Regex::new("c").unwrap()]),
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![vec!["a", "b", "c"], vec!["1", "2", "3"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["a", "c"], vec!["1", "3"]]);
     }
 
     #[rstest]

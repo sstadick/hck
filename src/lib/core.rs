@@ -4,10 +4,16 @@
 //! lifetime coersion to reuse the `shuffler` vector really locks down the possible options.
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
-use crate::{field_range::FieldRange, line_parser::LineParser, mmap::MmapChoice};
+use crate::{
+    field_range::{FieldRange, RegexOrStr},
+    line_parser::LineParser,
+    mmap::MmapChoice,
+};
+use anyhow::Result;
 use bstr::ByteSlice;
 use grep_cli::{DecompressionMatcherBuilder, DecompressionReaderBuilder};
 use memchr;
+use regex::bytes::Regex;
 use ripline::{
     line_buffer::{LineBuffer, LineBufferReader},
     lines::{self, LineIter},
@@ -28,28 +34,8 @@ pub enum HckInput<P: AsRef<Path>> {
     Path(P),
 }
 
-impl<P: AsRef<Path>> HckInput<P> {
-    /// Read the first line of an input and return it.
-    ///
-    /// It's up to the user to make sure that any consumed bytes are properly handed
-    /// off to the line parsers later on.
-    pub fn peek_first_line(&self) -> Result<String, io::Error> {
-        let mut buffer = String::new();
-        match self {
-            HckInput::Stdin => {
-                io::stdin().read_line(&mut buffer)?;
-            }
-
-            HckInput::Path(path) => {
-                BufReader::new(File::open(path)?).read_line(&mut buffer)?;
-            }
-        }
-        Ok(buffer)
-    }
-}
-
 /// The config object for [`Core`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CoreConfig<'a> {
     delimiter: &'a [u8],
     output_delimiter: &'a [u8],
@@ -57,6 +43,12 @@ pub struct CoreConfig<'a> {
     mmap_choice: MmapChoice,
     is_parser_regex: bool,
     try_decompress: bool,
+    raw_fields: Option<&'a str>,
+    raw_header_fields: Option<&'a [Regex]>,
+    raw_exclude: Option<&'a str>,
+    raw_exclude_headers: Option<&'a [Regex]>,
+    header_is_regex: bool,
+    parsed_delim: RegexOrStr<'a>,
 }
 
 impl<'a> Default for CoreConfig<'a> {
@@ -68,24 +60,128 @@ impl<'a> Default for CoreConfig<'a> {
             mmap_choice: unsafe { MmapChoice::auto() },
             is_parser_regex: false,
             try_decompress: false,
+            raw_fields: Some("1-"),
+            raw_header_fields: None,
+            raw_exclude: None,
+            raw_exclude_headers: None,
+            header_is_regex: false,
+            parsed_delim: RegexOrStr::Str(DEFAULT_DELIM.to_str().unwrap()),
         }
     }
 }
 
 impl<'a> CoreConfig<'a> {
-    #[inline]
-    pub fn is_parser_regex(&self) -> bool {
-        self.is_parser_regex
+    /// Get the parsed delimiter
+    pub fn parsed_delim(&self) -> &RegexOrStr<'a> {
+        &self.parsed_delim
     }
 
-    #[inline]
-    pub fn delimiter(&self) -> &[u8] {
-        self.delimiter
+    /// Read the first line of an input and return it.
+    ///
+    /// It's up to the user to make sure that any consumed bytes are properly handed
+    /// off to the line parsers later on.
+    pub fn peek_first_line<P: AsRef<Path>>(
+        &self,
+        input: &HckInput<P>,
+    ) -> Result<Vec<u8>, io::Error> {
+        let mut buffer = String::new();
+        match input {
+            HckInput::Stdin => {
+                io::stdin().read_line(&mut buffer)?;
+            }
+
+            HckInput::Path(path) => {
+                if self.try_decompress {
+                    let mut reader =
+                        BufReader::new(DecompressionReaderBuilder::new().build(&path)?);
+                    reader.read_line(&mut buffer)?;
+                } else {
+                    BufReader::new(File::open(path)?).read_line(&mut buffer)?;
+                }
+            }
+        }
+        Ok(lines::without_terminator(buffer.as_bytes(), self.line_terminator).to_owned())
+    }
+
+    /// Parse the raw user input fields and header fields. Returns any header bytes read and the parsed fields
+    pub fn parse_fields<P>(&self, input: &HckInput<P>) -> Result<(Option<Vec<u8>>, Vec<FieldRange>)>
+    where
+        P: AsRef<Path>,
+    {
+        // Parser the fields in the context of the files being looked at
+        let (mut extra, fields) = match (self.raw_fields, self.raw_header_fields) {
+            (Some(field_list), Some(header_fields)) => {
+                let first_line = self.peek_first_line(&input)?;
+                let mut fields = FieldRange::from_list(field_list)?;
+                let header_fields = FieldRange::from_header_list(
+                    header_fields,
+                    first_line.as_bytes(),
+                    &self.parsed_delim,
+                    self.header_is_regex,
+                )?;
+                fields.extend(header_fields.into_iter());
+                FieldRange::post_process_ranges(&mut fields);
+                (Some(first_line), fields)
+            }
+            (Some(field_list), None) => (None, FieldRange::from_list(field_list)?),
+            (None, Some(header_fields)) => {
+                let first_line = self.peek_first_line(&input)?;
+                let fields = FieldRange::from_header_list(
+                    header_fields,
+                    first_line.as_bytes(),
+                    &self.parsed_delim,
+                    self.header_is_regex,
+                )?;
+                (Some(first_line), fields)
+            }
+            (None, None) => (None, FieldRange::from_list("1-")?),
+        };
+
+        let fields = match (&self.raw_exclude, &self.raw_exclude_headers) {
+            (Some(exclude), Some(exclude_header)) => {
+                let exclude = FieldRange::from_list(exclude)?;
+                let fields = FieldRange::exclude(fields, exclude);
+                let first_line = if let Some(first_line) = extra {
+                    first_line
+                } else {
+                    self.peek_first_line(&input)?
+                };
+                let exclude_headers = FieldRange::from_header_list(
+                    &exclude_header,
+                    first_line.as_bytes(),
+                    &self.parsed_delim,
+                    self.header_is_regex,
+                )?;
+                extra = Some(first_line);
+                FieldRange::exclude(fields, exclude_headers)
+            }
+            (Some(exclude), None) => {
+                let exclude = FieldRange::from_list(exclude)?;
+                FieldRange::exclude(fields, exclude)
+            }
+            (None, Some(exclude_header)) => {
+                let first_line = if let Some(first_line) = extra {
+                    first_line
+                } else {
+                    self.peek_first_line(&input)?
+                };
+                let exclude_headers = FieldRange::from_header_list(
+                    &exclude_header,
+                    first_line.as_bytes(),
+                    &self.parsed_delim,
+                    self.header_is_regex,
+                )?;
+                extra = Some(first_line);
+                FieldRange::exclude(fields, exclude_headers)
+            }
+            (None, None) => fields,
+        };
+        Ok((extra, fields))
     }
 }
 
 /// A builder for the [`CoreConfig`] which drives [`Core`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct CoreConfigBuilder<'a> {
     config: CoreConfig<'a>,
 }
@@ -97,43 +193,79 @@ impl<'a> CoreConfigBuilder<'a> {
         }
     }
 
-    pub fn build(self) -> CoreConfig<'a> {
-        self.config
+    pub fn build(mut self) -> Result<CoreConfig<'a>> {
+        let delim = if self.config.is_parser_regex {
+            RegexOrStr::Regex(Regex::new(self.config.delimiter.to_str()?)?)
+        } else {
+            RegexOrStr::Str(self.config.delimiter.to_str()?)
+        };
+        self.config.parsed_delim = delim;
+        Ok(self.config)
     }
 
     /// The substr to split lines on.
-    pub fn delimiter(&mut self, delim: &'a [u8]) -> &mut Self {
+    pub fn delimiter(mut self, delim: &'a [u8]) -> Self {
         self.config.delimiter = delim;
         self
     }
 
     /// The substr to use as the output delimiter
-    pub fn output_delimiter(&mut self, delim: &'a [u8]) -> &mut Self {
+    pub fn output_delimiter(mut self, delim: &'a [u8]) -> Self {
         self.config.output_delimiter = delim;
         self
     }
 
     /// The line terminator to use when looking for linebreaks and stripping linebreach chars.
-    pub fn line_terminator(&mut self, term: LineTerminator) -> &mut Self {
+    pub fn line_terminator(mut self, term: LineTerminator) -> Self {
         self.config.line_terminator = term;
         self
     }
 
     /// Whether or not to try to use mmap mode
-    pub fn mmap(&mut self, mmap_choice: MmapChoice) -> &mut Self {
+    pub fn mmap(mut self, mmap_choice: MmapChoice) -> Self {
         self.config.mmap_choice = mmap_choice;
         self
     }
 
     /// Whether or not the parser is a regex
-    pub fn is_regex_parser(&mut self, is_regex: bool) -> &mut Self {
+    pub fn is_regex_parser(mut self, is_regex: bool) -> Self {
         self.config.is_parser_regex = is_regex;
         self
     }
 
     /// Try to decompress an input file
-    pub fn try_decompress(&mut self, try_decompress: bool) -> &mut Self {
+    pub fn try_decompress(mut self, try_decompress: bool) -> Self {
         self.config.try_decompress = try_decompress;
+        self
+    }
+
+    /// The raw user input fields to output
+    pub fn fields(mut self, fields: Option<&'a str>) -> Self {
+        self.config.raw_fields = fields;
+        self
+    }
+
+    /// The raw user input header to output
+    pub fn headers(mut self, headers: Option<&'a [Regex]>) -> Self {
+        self.config.raw_header_fields = headers;
+        self
+    }
+
+    /// The raw user input fields to exclude
+    pub fn exclude(mut self, exclude: Option<&'a str>) -> Self {
+        self.config.raw_exclude = exclude;
+        self
+    }
+
+    /// The raw user input headers to exclude
+    pub fn exclude_headers(mut self, exclude_headers: Option<&'a [Regex]>) -> Self {
+        self.config.raw_exclude_headers = exclude_headers;
+        self
+    }
+
+    /// Whether or not to treat the headers as regex
+    pub fn header_is_regex(mut self, header_is_regex: bool) -> Self {
+        self.config.header_is_regex = header_is_regex;
         self
     }
 }
@@ -203,18 +335,18 @@ where
         &mut self,
         input: HckInput<P>,
         mut output: W,
-        header: Option<String>,
+        header: Option<Vec<u8>>,
     ) -> Result<(), io::Error>
     where
         P: AsRef<Path>,
         W: Write,
     {
-        if let Some(header) = header {
-            self.hck_bytes(header.as_bytes(), &mut output)?;
-        }
         // Dispatch to a given `hck_*` runner depending on configuration
         match input {
             HckInput::Stdin => {
+                if let Some(header) = header {
+                    self.hck_bytes(header.as_bytes(), &mut output)?;
+                }
                 let reader = io::stdin();
                 if self.allow_fastmode() {
                     self.hck_reader_fast(reader, &mut output)

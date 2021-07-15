@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.3
+
+- Bugfix, allow headers specified to be excluded to not be found
+
 ## v0.5.2
 
 - [PR24](https://github.com/sstadick/hck/pull/24) Removed the now defunct profile guided optimization shell scripts and all references to them in favor of the `justfile` that was added in `v0.5.0`

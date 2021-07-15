@@ -153,6 +153,7 @@ impl FieldRange {
         header: &[u8],
         delim: &RegexOrStr,
         header_is_regex: bool,
+        allow_missing: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];
         let mut found = vec![false; list.len()];
@@ -178,12 +179,14 @@ impl FieldRange {
             }
         }
 
-        if ranges.is_empty() {
-            return Err(FieldError::NoHeadersMatched);
-        }
-        for (i, was_found) in found.into_iter().enumerate() {
-            if !was_found {
-                return Err(FieldError::HeaderNotFound(list[i].as_str().to_owned()));
+        if !allow_missing {
+            if ranges.is_empty() {
+                return Err(FieldError::NoHeadersMatched);
+            }
+            for (i, was_found) in found.into_iter().enumerate() {
+                if !was_found {
+                    return Err(FieldError::HeaderNotFound(list[i].as_str().to_owned()));
+                }
             }
         }
 
@@ -351,7 +354,8 @@ mod test {
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, true).unwrap();
+        let fields =
+            FieldRange::from_header_list(&header_fields, header, &delim, true, false).unwrap();
         assert_eq!(
             vec![
                 FieldRange {
@@ -375,7 +379,8 @@ mod test {
         let delim = Regex::new("-").unwrap();
         let delim = RegexOrStr::Regex(delim);
         let header_fields = vec![Regex::new(r"is").unwrap()];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
+        let fields =
+            FieldRange::from_header_list(&header_fields, header, &delim, false, false).unwrap();
         assert_eq!(
             vec![FieldRange {
                 low: 1,
@@ -397,7 +402,7 @@ mod test {
             Regex::new(r"\$%").unwrap(),
             Regex::new(r"is").unwrap(),
         ];
-        let result = FieldRange::from_header_list(&header_fields, header, &delim, false);
+        let result = FieldRange::from_header_list(&header_fields, header, &delim, false, false);
         assert_eq!(
             result.unwrap_err(),
             FieldError::HeaderNotFound(String::from(r"^is_.*$"))

@@ -118,6 +118,7 @@ impl<'a> CoreConfig<'a> {
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
+                    false,
                 )?;
                 fields.extend(header_fields.into_iter());
                 FieldRange::post_process_ranges(&mut fields);
@@ -131,6 +132,7 @@ impl<'a> CoreConfig<'a> {
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
+                    false,
                 )?;
                 (Some(first_line), fields)
             }
@@ -151,6 +153,7 @@ impl<'a> CoreConfig<'a> {
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
+                    true,
                 )?;
                 extra = Some(first_line);
                 FieldRange::exclude(fields, exclude_headers)
@@ -170,6 +173,7 @@ impl<'a> CoreConfig<'a> {
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
+                    true,
                 )?;
                 extra = Some(first_line);
                 FieldRange::exclude(fields, exclude_headers)

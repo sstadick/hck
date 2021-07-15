@@ -44,6 +44,7 @@ brew install hck
 - MacPorts
 
 ```bash
+# Note, version may lag behind latest
 sudo port selfupdate
 sudo port install hck
 ```

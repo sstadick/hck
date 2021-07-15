@@ -13,8 +13,10 @@ use thiserror::Error;
 const MAX: usize = usize::MAX;
 
 /// Errors for parsing / validating [`FieldRange`] strings.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum FieldError {
+    #[error("Header not found: {0}")]
+    HeaderNotFound(String),
     #[error("Fields and positions are numbered from 1: {0}")]
     InvalidField(usize),
     #[error("High end of range less than low end of range: {0}-{1}")]
@@ -25,7 +27,7 @@ pub enum FieldError {
     NoHeadersMatched,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RegexOrStr<'b> {
     Regex(Regex),
     Str(&'b str),
@@ -153,10 +155,12 @@ impl FieldRange {
         header_is_regex: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
         let mut ranges = vec![];
+        let mut found = vec![false; list.len()];
         for (i, header) in delim.split(header).enumerate() {
             for (j, regex) in list.iter().enumerate() {
                 if !header_is_regex {
                     if regex.as_str().as_bytes() == header {
+                        found[j] = true;
                         ranges.push(FieldRange {
                             low: i,
                             high: i,
@@ -164,6 +168,7 @@ impl FieldRange {
                         });
                     }
                 } else if regex.is_match(header) {
+                    found[j] = true;
                     ranges.push(FieldRange {
                         low: i,
                         high: i,
@@ -175,6 +180,11 @@ impl FieldRange {
 
         if ranges.is_empty() {
             return Err(FieldError::NoHeadersMatched);
+        }
+        for (i, was_found) in found.into_iter().enumerate() {
+            if !was_found {
+                return Err(FieldError::HeaderNotFound(list[i].as_str().to_owned()));
+            }
         }
 
         FieldRange::post_process_ranges(&mut ranges);
@@ -364,20 +374,33 @@ mod test {
         let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
         let delim = RegexOrStr::Regex(delim);
+        let header_fields = vec![Regex::new(r"is").unwrap()];
+        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
+        assert_eq!(
+            vec![FieldRange {
+                low: 1,
+                high: 1,
+                pos: 0
+            },],
+            fields
+        );
+    }
+
+    #[test]
+    fn test_parse_header_fields_literal_header_not_found() {
+        let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
+        let delim = Regex::new("-").unwrap();
+        let delim = RegexOrStr::Regex(delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
             Regex::new(r"\$%").unwrap(),
             Regex::new(r"is").unwrap(),
         ];
-        let fields = FieldRange::from_header_list(&header_fields, header, &delim, false).unwrap();
+        let result = FieldRange::from_header_list(&header_fields, header, &delim, false);
         assert_eq!(
-            vec![FieldRange {
-                low: 1,
-                high: 1,
-                pos: 3
-            },],
-            fields
+            result.unwrap_err(),
+            FieldError::HeaderNotFound(String::from(r"^is_.*$"))
         );
     }
 

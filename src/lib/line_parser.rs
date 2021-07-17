@@ -47,6 +47,8 @@ impl<'a> LineParser<'a> for SubStrLineParser<'a> {
             }
 
             if low < iterator_index {
+                // When this FieldRange is a duplicate and we've already printed some of the fields,
+                // advance up to the first not-printed field
                 while low < iterator_index {
                     low += 1
                 }
@@ -106,6 +108,8 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
             }
 
             if low < iterator_index {
+                // When this FieldRange is a duplicate and we've already printed some of the fields,
+                // advance up to the first not-printed field
                 while low < iterator_index {
                     low += 1
                 }

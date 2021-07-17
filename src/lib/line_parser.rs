@@ -117,9 +117,6 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
 
             // Advance through the range
             for _ in low..=high {
-                // if i < iterator_index {
-                //     continue;
-                // }
                 match parts.next() {
                     Some(part) => {
                         // Guaranteed to be in range since shuffler is created based on field pos anyways

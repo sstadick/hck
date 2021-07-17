@@ -180,6 +180,28 @@ a       test
 3       four
 ```
 
+### Splitting by-index and by-header
+
+This one requires some explaining first. Basically, by-index and by-header selections each have their own "order", and then the orders are merged ex:
+
+```bash
+❯ printf 'a,b,c,d,e\n1,2,3,4,5\n' | hck -d, -D: -f3 -F 'b' -F 'a'
+b:c:a
+2:3:1
+```
+
+In the by-index group, we've specified column 3 to be in output position 0. In the by-header group, we've specified that column `b` be in position 0. They by-index and by-header selections are merged together and when merging, if there are two outputs specified to be in the same output position the are output in input order (input meaning the order of columns in the input data).
+
+This can lead to unexpected outcomes, such as the following example where `a` now comes first in the output when compared to the example above.
+
+```bash
+❯ printf 'a,b,c,d,e\n1,2,3,4,5\n' | hck -d, -D: -f3 -F 'a'
+a:c
+1:3
+```
+
+Takeaway: be careful when a specific output order is desired and you are mixing and matching by-index and by-header field selections.
+
 ## Benchmarks
 
 This set of benchmarks is simply meant to show that `hck` is in the same ballpark as other tools. These are meant to capture real world usage of the tools, so in the multi-space delimiter benchmark for `gcut`, for example, we use `tr` to convert the space runs to a single space and then pipe to `gcut`.

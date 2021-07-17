@@ -663,6 +663,124 @@ mod test {
     }
 
     #[rstest]
+    fn test_duplicate_field_selection_more(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            Some("3,3,1,2"),
+            None,
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![vec!["a", "b", "c", "d", "e"], vec!["1", "2", "3", "4", "5"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["c", "a", "b"], vec!["3", "1", "2"]]);
+    }
+
+    #[rstest]
+    fn test_duplicate_field_selection_range(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            Some("2-3,5,1,2-4"),
+            None,
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![vec!["a", "b", "c", "d", "e"], vec!["1", "2", "3", "4", "5"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(
+            filtered,
+            vec![vec!["b", "c", "e", "a", "d"], vec!["2", "3", "5", "1", "4"]]
+        );
+    }
+
+    #[rstest]
+    fn test_headers_and_fields(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            Some("3"),
+            Some(vec![Regex::new("b").unwrap(), Regex::new("a").unwrap()]),
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![vec!["a", "b", "c", "d", "e"], vec!["1", "2", "3", "4", "5"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["b", "c", "a"], vec!["2", "3", "1"]]);
+    }
+
+    #[rstest]
+    fn test_duplicate_field_selection(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r" ", "  ")] hck_delim: &str,
+        #[values(true, false)] delim_is_literal: bool,
+        #[values(true, false)] header_is_regex: bool,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts_generic(
+            &input_file,
+            &output_file,
+            Some("3,1,3"),
+            None,
+            None,
+            no_mmap,
+            hck_delim,
+            delim_is_literal,
+            header_is_regex,
+        );
+        let data = vec![vec!["a", "b", "c", "d"], vec!["1", "2", "3", "4"]];
+        write_file(&input_file, data, hck_delim);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        assert_eq!(filtered, vec![vec!["c", "a"], vec!["3", "1"]]);
+    }
+    #[rstest]
     #[rustfmt::skip::macros(vec)]
     fn test_read_single_values(
         #[values(true, false)] no_mmap: bool,

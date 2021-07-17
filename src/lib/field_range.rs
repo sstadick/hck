@@ -203,7 +203,7 @@ impl FieldRange {
         for i in 0..ranges.len() {
             let j = i + 1;
             if let Some(rng) = ranges.get_mut(i) {
-                rng.pos -= shifted;
+                rng.pos = rng.pos.saturating_sub(shifted);
             }
 
             while j < ranges.len()
@@ -333,6 +333,7 @@ mod test {
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1},  FieldRange { low: 3, high: usize::MAX - 1, pos: 0}, FieldRange { low: 4, high: 7, pos: 2}], FieldRange::from_list("4-,1,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 7, pos: 0}], FieldRange::from_list("-4,5-8").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1 }, FieldRange { low: 2, high: 2, pos: 0}, FieldRange { low: 2, high: 2, pos: 2}], FieldRange::from_list("3,1,3").unwrap());
     }
 
     #[test]

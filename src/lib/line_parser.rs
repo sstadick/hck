@@ -35,6 +35,7 @@ impl<'a> LineParser<'a> for SubStrLineParser<'a> {
 
         // Iterate over our ranges and write any fields that are contained by them.
         for &FieldRange { low, high, pos } in self.field_ranges {
+            let mut low = low;
             // Advance up to low end of range
             if low > iterator_index {
                 match parts.nth(low - iterator_index - 1) {
@@ -45,8 +46,16 @@ impl<'a> LineParser<'a> for SubStrLineParser<'a> {
                 }
             }
 
+            if low < iterator_index {
+                // When this FieldRange is a duplicate and we've already printed some of the fields,
+                // advance up to the first not-printed field
+                while low < iterator_index {
+                    low += 1
+                }
+            }
+
             // Advance through the range
-            for _ in 0..=high - low {
+            for _ in low..=high {
                 match parts.next() {
                     Some(part) => {
                         // Guaranteed to be in range since shuffler is created based on field pos anyways
@@ -87,6 +96,7 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
 
         // Iterate over our ranges and write any fields that are contained by them.
         for &FieldRange { low, high, pos } in self.field_ranges {
+            let mut low = low;
             // Advance up to low end of range
             if low > iterator_index {
                 match parts.nth(low - iterator_index - 1) {
@@ -97,8 +107,16 @@ impl<'a> LineParser<'a> for RegexLineParser<'a> {
                 }
             }
 
+            if low < iterator_index {
+                // When this FieldRange is a duplicate and we've already printed some of the fields,
+                // advance up to the first not-printed field
+                while low < iterator_index {
+                    low += 1
+                }
+            }
+
             // Advance through the range
-            for _ in 0..=high - low {
+            for _ in low..=high {
                 match parts.next() {
                     Some(part) => {
                         // Guaranteed to be in range since shuffler is created based on field pos anyways

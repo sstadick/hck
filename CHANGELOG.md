@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.5.5 - IN PROGRESS
+
+- Speed up edge case where columns may have already been consumed i.e. `-f1-3,5,2-`
+
 ## v0.5.4
 
 - [Bugfix](https://github.com/sstadick/hck/issues/30) Better handling of duplicate selected fields, fixed output ordering when duplicate fields were selected. Added clarification to README regarding mixing by-index and by-header field selction / reordering.

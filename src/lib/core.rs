@@ -362,10 +362,9 @@ where
             HckInput::Path(path) => {
                 if self.config.try_decompress {
                     let matcher = DecompressionMatcherBuilder::new()
-                        .try_associate("*.gz", "pigz", vec!["-d", "-c"])
-                        .unwrap()
-                        .build()
-                        .unwrap(); // ignoring missing decompression programs, they will passthrough anyways
+                        .associate("*.gz", "pigz", vec!["-d", "-c"], true)
+                        .build()?;
+                    dbg!(&matcher);
                     let reader = DecompressionReaderBuilder::new()
                         .matcher(matcher)
                         .build(&path)?;

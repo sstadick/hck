@@ -362,9 +362,8 @@ where
             HckInput::Path(path) => {
                 if self.config.try_decompress {
                     let matcher = DecompressionMatcherBuilder::new()
-                        .associate("*.gz", "pigz", vec!["-d", "-c"], true)
+                        .associate("*.gz", "pigz", vec!["-d", "-c"])
                         .build()?;
-                    dbg!(&matcher);
                     let reader = DecompressionReaderBuilder::new()
                         .matcher(matcher)
                         .build(&path)?;

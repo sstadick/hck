@@ -27,7 +27,7 @@ codegen-units = 1
 anyhow = "1.0.41"
 bstr = "0.2.16"
 env_logger = "0.8.4"
-grep-cli = {version="0.1.6", path="/home/seth/dev/ripgrep/crates/cli"}
+grep-cli = version="0.1.6"
 lazy_static = "1.4.0"
 log = "0.4.14"
 regex = "1.5.4"

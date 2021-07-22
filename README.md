@@ -289,7 +289,7 @@ The following table indicates the file extension / binary pairs that are used to
 | `*.gz`    | `gzip -d -c`             | gzip       |
 | `*.tgz`   | `gzip -d -c`             | gzip       |
 | `*.bz2`   | `bzip2 -d -c`            | bzip2      |
-| `*.tbz2`  | `bzip -d -c`             | gzip       |
+| `*.tbz2`  | `bzip2 -d -c`            | bzip2      |
 | `*.xz`    | `xz -d -c`               | xz         |
 | `*.txz`   | `xz -d -c`               | xz         |
 | `*.lz4`   | `lz4 -d -c`              | lz4        |

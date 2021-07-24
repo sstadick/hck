@@ -1,5 +1,6 @@
 use anyhow::{Context, Error, Result};
 use env_logger::Env;
+use flate2::{write::GzEncoder, Compression};
 use grep_cli::stdout;
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
@@ -161,6 +162,10 @@ struct Opts {
     #[structopt(short = "z", long)]
     try_decompress: bool,
 
+    /// Try to gzip compress the output
+    #[structopt(short = "Z", long)]
+    try_compress: bool,
+
     /// Disallow the possibility of using mmap
     #[structopt(long)]
     no_mmap: bool,
@@ -175,7 +180,15 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
 
-    let mut writer = select_output(opts.output.as_ref())?;
+    let writer = select_output(opts.output.as_ref())?;
+    let writer = BufWriter::new(writer);
+    // TODO: Make compression parallel
+    // TODO: Support all flate2 compression targets via enum on `-Z`
+    let mut writer: Box<dyn Write> = if opts.try_compress {
+        Box::new(GzEncoder::new(writer, Compression::default()))
+    } else {
+        Box::new(writer)
+    };
 
     let inputs: Vec<HckInput<PathBuf>> = if opts.input.is_empty() {
         vec![HckInput::Stdin]
@@ -240,8 +253,6 @@ fn run<W: Write>(
     conf: &CoreConfig,
     line_buffer: &mut LineBuffer,
 ) -> Result<()> {
-    let writer = BufWriter::new(writer);
-
     let (extra, fields) = conf.parse_fields(&input)?;
     // No point processing empty fields
     if fields.is_empty() {

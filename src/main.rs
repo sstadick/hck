@@ -238,8 +238,8 @@ fn main() -> Result<()> {
     };
     let conf = conf_builder
         .mmap(mmap)
-        .delimiter(&opts.delimiter.as_bytes())
-        .output_delimiter(&opts.output_delimiter.as_bytes())
+        .delimiter(opts.delimiter.as_bytes())
+        .output_delimiter(opts.output_delimiter.as_bytes())
         .is_regex_parser(!opts.delim_is_literal)
         .try_decompress(opts.try_decompress)
         .fields(opts.fields.as_deref())
@@ -281,14 +281,14 @@ fn run<W: Write>(
             let mut core = Core::new(
                 conf,
                 &fields,
-                RegexLineParser::new(&fields, &regex),
+                RegexLineParser::new(&fields, regex),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;
         }
         RegexOrStr::Str(s) => {
             let mut core = Core::new(
-                &conf,
+                conf,
                 &fields,
                 SubStrLineParser::new(&fields, s.as_bytes()),
                 line_buffer,

@@ -129,7 +129,7 @@ impl<'a> CoreConfig<'a> {
         // Parser the fields in the context of the files being looked at
         let (mut extra, fields) = match (self.raw_fields, self.raw_header_fields) {
             (Some(field_list), Some(header_fields)) => {
-                let first_line = self.peek_first_line(&input)?;
+                let first_line = self.peek_first_line(input)?;
                 let mut fields = FieldRange::from_list(field_list)?;
                 let header_fields = FieldRange::from_header_list(
                     header_fields,
@@ -144,7 +144,7 @@ impl<'a> CoreConfig<'a> {
             }
             (Some(field_list), None) => (None, FieldRange::from_list(field_list)?),
             (None, Some(header_fields)) => {
-                let first_line = self.peek_first_line(&input)?;
+                let first_line = self.peek_first_line(input)?;
                 let fields = FieldRange::from_header_list(
                     header_fields,
                     first_line.as_bytes(),
@@ -164,10 +164,10 @@ impl<'a> CoreConfig<'a> {
                 let first_line = if let Some(first_line) = extra {
                     first_line
                 } else {
-                    self.peek_first_line(&input)?
+                    self.peek_first_line(input)?
                 };
                 let exclude_headers = FieldRange::from_header_list(
-                    &exclude_header,
+                    exclude_header,
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
@@ -184,10 +184,10 @@ impl<'a> CoreConfig<'a> {
                 let first_line = if let Some(first_line) = extra {
                     first_line
                 } else {
-                    self.peek_first_line(&input)?
+                    self.peek_first_line(input)?
                 };
                 let exclude_headers = FieldRange::from_header_list(
-                    &exclude_header,
+                    exclude_header,
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
@@ -433,7 +433,7 @@ where
         for line in iter {
             let mut s: Vec<Vec<&[u8]>> = shuffler;
             self.line_parser.parse_line(
-                lines::without_terminator(&line, self.config.line_terminator),
+                lines::without_terminator(line, self.config.line_terminator),
                 &mut s,
             );
             let items = s.iter_mut().flat_map(|s| s.drain(..));
@@ -559,7 +559,7 @@ where
             for line in iter {
                 let mut s: Vec<Vec<&[u8]>> = shuffler;
                 self.line_parser.parse_line(
-                    lines::without_terminator(&line, self.config.line_terminator),
+                    lines::without_terminator(line, self.config.line_terminator),
                     &mut s,
                 );
 

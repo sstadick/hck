@@ -49,7 +49,7 @@ run-instrumented-binary: generate-pgo-data
 
     # gzip decoding
     gzip -c "{{data}}" > "{{gzip-data}}"
-    {{justfile_directory()}}/target/release/hck -Z -Ld, -D, -f1- -e 8 "{{data}}" > "{{gzip-data}}'
+    {{justfile_directory()}}/target/release/hck -Z -Ld, -D, -f1- -e 8 "{{data}}" > "{{gzip-data}}"
     {{justfile_directory()}}/target/release/hck -z -Ld, -f1,19,8 -e 8 "{{gzip-data}}" > /dev/null
 
 clean-data: run-instrumented-binary

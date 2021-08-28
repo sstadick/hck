@@ -285,8 +285,7 @@ The following table indicates the file extension / binary pairs that are used to
 
 | Extension | Binary                   | Type       |
 | :-------- | :----------------------- | :--------- |
-| `*.gz`    | `pigz -d -c`             | gzip       |
-| `*.gz`    | `gzip -d -c`             | gzip       |
+| `*.gz`    | Native                   | gzip       |
 | `*.tgz`   | `gzip -d -c`             | gzip       |
 | `*.bz2`   | `bzip2 -d -c`            | bzip2      |
 | `*.tbz2`  | `bzip2 -d -c`            | bzip2      |

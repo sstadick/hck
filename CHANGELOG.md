@@ -1,8 +1,11 @@
 # Changelog
 
-## v0.5.5 - IN PROGRESS
+## v0.6.0
 
 - Speed up edge case where columns may have already been consumed i.e. `-f1-3,5,2-`
+- Remove pigz binary from compression search
+- Add native gz decompression
+- Add native gz output compression via `gzp`
 
 ## v0.5.4
 

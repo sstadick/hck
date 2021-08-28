@@ -5,6 +5,7 @@
 pgo-data := join(justfile_directory(), "pgo-data")
 data := join(pgo-data, "data.csv")
 spaced-data := join(pgo-data, "spaced_data.txt")
+gzip-data := join(pgo-data, "data.csv.gz")
 
 prep:
     rustup component add llvm-tools-preview
@@ -46,9 +47,15 @@ run-instrumented-binary: generate-pgo-data
     {{justfile_directory()}}/target/release/hck -d '[[:space:]]+' -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
     {{justfile_directory()}}/target/release/hck -d '[[:space:]]+' --no-mmap -f1,8,19 -e 8 "{{spaced-data}}" > /dev/null
 
+    # gzip decoding
+    gzip -c "{{data}}" > "{{gzip-data}}"
+    {{justfile_directory()}}/target/release/hck -Z -Ld, -D, -f1- -e 8 "{{data}}" > "{{gzip-data}}'
+    {{justfile_directory()}}/target/release/hck -z -Ld, -f1,19,8 -e 8 "{{gzip-data}}" > /dev/null
+
 clean-data: run-instrumented-binary
     rm {{data}}
     rm {{spaced-data}}
+    rm {{gzip-data}}
 
 
 merge-prof-data llvm-profdata=`find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm-profdata -type f`: clean-data prep

@@ -1,13 +1,16 @@
 use anyhow::{Context, Error, Result};
 use env_logger::Env;
+use flate2::Compression;
 use grep_cli::stdout;
+use gzp::{deflate::Gzip, ZBuilder};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
     field_range::RegexOrStr,
     line_parser::{RegexLineParser, SubStrLineParser},
     mmap::MmapChoice,
 };
-use log::error;
+use lazy_static::lazy_static;
+use log::{error, warn};
 use regex::bytes::Regex;
 use ripline::{
     line_buffer::{LineBuffer, LineBufferBuilder},
@@ -21,6 +24,11 @@ use std::{
 };
 use structopt::{clap::AppSettings::ColoredHelp, StructOpt};
 use termcolor::ColorChoice;
+
+lazy_static! {
+    /// Return the number of cpus as an &str
+    pub static ref NUM_CPU: String = num_cpus::get().to_string();
+}
 
 pub mod built_info {
     use structopt::lazy_static::lazy_static;
@@ -52,8 +60,8 @@ pub mod built_info {
 }
 
 /// Determine if we should write to a file or stdout.
-fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write>> {
-    let writer: Box<dyn Write> = match output {
+fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write + Send + 'static>> {
+    let writer: Box<dyn Write + Send + 'static> = match output {
         Some(path) => {
             if path.as_ref().as_os_str() == "-" {
                 // TODO: verify that stdout buffers when writing to a terminal now (this was a bug in Rust at some point).
@@ -79,11 +87,6 @@ fn is_broken_pipe(err: &Error) -> bool {
     }
     false
 }
-
-/// Select and reorder columns.
-///
-/// This tool behaves like unix `cut` with a few exceptions:
-///
 /// * `delimiter` is a regex by default and a fixed substring with `-L`
 /// * `header-fields` allows for specifying a literal or a regex to match header names to select columns
 /// * both `header-fields` and `fields` order dictate the order of the output columns
@@ -161,6 +164,18 @@ struct Opts {
     #[structopt(short = "z", long)]
     try_decompress: bool,
 
+    /// Try to gzip compress the output
+    #[structopt(short = "Z", long)]
+    try_compress: bool,
+
+    /// Threads to use for compression, 0 will result in `hck` staying single threaded.
+    #[structopt(short = "t", long, default_value=NUM_CPU.as_str())]
+    compression_threads: usize,
+
+    /// Compression level
+    #[structopt(short = "l", long, default_value = "6")]
+    compression_level: u32,
+
     /// Disallow the possibility of using mmap
     #[structopt(long)]
     no_mmap: bool,
@@ -175,7 +190,22 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     let opts = Opts::from_args();
 
-    let mut writer = select_output(opts.output.as_ref())?;
+    let writer = select_output(opts.output.as_ref())?;
+    // TODO: Support all flate2 compression targets via enum on `-Z`
+    let mut writer: Box<dyn Write> = if opts.try_compress {
+        Box::new(
+            ZBuilder::<Gzip, _>::new()
+                .compression_level(Compression::new(opts.compression_level))
+                .num_threads(opts.compression_threads)
+                .from_writer(writer),
+        )
+    } else {
+        Box::new(BufWriter::new(writer))
+    };
+
+    if opts.input.is_empty() && opts.try_decompress && opts.header_field.is_some() {
+        warn!("Selections based on header fields is not currently supported on STDIN compressed data.");
+    }
 
     let inputs: Vec<HckInput<PathBuf>> = if opts.input.is_empty() {
         vec![HckInput::Stdin]
@@ -208,8 +238,8 @@ fn main() -> Result<()> {
     };
     let conf = conf_builder
         .mmap(mmap)
-        .delimiter(&opts.delimiter.as_bytes())
-        .output_delimiter(&opts.output_delimiter.as_bytes())
+        .delimiter(opts.delimiter.as_bytes())
+        .output_delimiter(opts.output_delimiter.as_bytes())
         .is_regex_parser(!opts.delim_is_literal)
         .try_decompress(opts.try_decompress)
         .fields(opts.fields.as_deref())
@@ -240,8 +270,6 @@ fn run<W: Write>(
     conf: &CoreConfig,
     line_buffer: &mut LineBuffer,
 ) -> Result<()> {
-    let writer = BufWriter::new(writer);
-
     let (extra, fields) = conf.parse_fields(&input)?;
     // No point processing empty fields
     if fields.is_empty() {
@@ -253,14 +281,14 @@ fn run<W: Write>(
             let mut core = Core::new(
                 conf,
                 &fields,
-                RegexLineParser::new(&fields, &regex),
+                RegexLineParser::new(&fields, regex),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;
         }
         RegexOrStr::Str(s) => {
             let mut core = Core::new(
-                &conf,
+                conf,
                 &fields,
                 SubStrLineParser::new(&fields, s.as_bytes()),
                 line_buffer,
@@ -299,10 +327,13 @@ mod test {
             header_field: None,
             header_is_regex: true,
             try_decompress: false,
+            try_compress: false,
             no_mmap,
             crlf: false,
             exclude: None,
             exclude_header: None,
+            compression_level: 3,
+            compression_threads: 0,
         }
     }
 
@@ -324,10 +355,13 @@ mod test {
             header_field: None,
             header_is_regex: true,
             try_decompress: false,
+            try_compress: false,
             no_mmap,
             crlf: false,
             exclude: None,
             exclude_header: None,
+            compression_level: 3,
+            compression_threads: 0,
         }
     }
 
@@ -354,10 +388,13 @@ mod test {
             header_field,
             header_is_regex,
             try_decompress: false,
+            try_compress: false,
             no_mmap,
             crlf: false,
             exclude: exclude.map(|e| e.to_owned()),
             exclude_header: None,
+            compression_threads: 0,
+            compression_level: 3,
         }
     }
 

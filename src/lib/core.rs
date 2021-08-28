@@ -11,7 +11,8 @@ use crate::{
 };
 use anyhow::Result;
 use bstr::ByteSlice;
-use grep_cli::{DecompressionMatcherBuilder, DecompressionReaderBuilder};
+use flate2::read::GzDecoder;
+use grep_cli::DecompressionReaderBuilder;
 use memchr;
 use regex::bytes::Regex;
 use ripline::{
@@ -87,13 +88,30 @@ impl<'a> CoreConfig<'a> {
         let mut buffer = String::new();
         match input {
             HckInput::Stdin => {
+                // TODO: work out how to decode just a byte slice
+                if self.try_decompress {
+                    unimplemented!("Header selections not supported when piping gzipped stdin")
+                }
                 io::stdin().read_line(&mut buffer)?;
             }
 
             HckInput::Path(path) => {
                 if self.try_decompress {
-                    let mut reader =
-                        BufReader::new(DecompressionReaderBuilder::new().build(&path)?);
+                    let reader: Box<dyn Read> = if path
+                        .as_ref()
+                        .to_str()
+                        .map(|p| p.ends_with(".gz"))
+                        .unwrap_or(false)
+                    {
+                        Box::new(GzDecoder::new(File::open(&path)?))
+                    } else {
+                        Box::new(
+                            DecompressionReaderBuilder::new()
+                                // .matcher(matcher)
+                                .build(&path)?,
+                        )
+                    };
+                    let mut reader = BufReader::new(reader);
                     reader.read_line(&mut buffer)?;
                 } else {
                     BufReader::new(File::open(path)?).read_line(&mut buffer)?;
@@ -111,7 +129,7 @@ impl<'a> CoreConfig<'a> {
         // Parser the fields in the context of the files being looked at
         let (mut extra, fields) = match (self.raw_fields, self.raw_header_fields) {
             (Some(field_list), Some(header_fields)) => {
-                let first_line = self.peek_first_line(&input)?;
+                let first_line = self.peek_first_line(input)?;
                 let mut fields = FieldRange::from_list(field_list)?;
                 let header_fields = FieldRange::from_header_list(
                     header_fields,
@@ -126,7 +144,7 @@ impl<'a> CoreConfig<'a> {
             }
             (Some(field_list), None) => (None, FieldRange::from_list(field_list)?),
             (None, Some(header_fields)) => {
-                let first_line = self.peek_first_line(&input)?;
+                let first_line = self.peek_first_line(input)?;
                 let fields = FieldRange::from_header_list(
                     header_fields,
                     first_line.as_bytes(),
@@ -146,10 +164,10 @@ impl<'a> CoreConfig<'a> {
                 let first_line = if let Some(first_line) = extra {
                     first_line
                 } else {
-                    self.peek_first_line(&input)?
+                    self.peek_first_line(input)?
                 };
                 let exclude_headers = FieldRange::from_header_list(
-                    &exclude_header,
+                    exclude_header,
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
@@ -166,10 +184,10 @@ impl<'a> CoreConfig<'a> {
                 let first_line = if let Some(first_line) = extra {
                     first_line
                 } else {
-                    self.peek_first_line(&input)?
+                    self.peek_first_line(input)?
                 };
                 let exclude_headers = FieldRange::from_header_list(
-                    &exclude_header,
+                    exclude_header,
                     first_line.as_bytes(),
                     &self.parsed_delim,
                     self.header_is_regex,
@@ -352,7 +370,11 @@ where
                 if let Some(header) = header {
                     self.hck_bytes(header.as_bytes(), &mut output)?;
                 }
-                let reader = io::stdin();
+                let reader: Box<dyn Read> = if self.config.try_decompress {
+                    Box::new(GzDecoder::new(io::stdin()))
+                } else {
+                    Box::new(io::stdin())
+                };
                 if self.allow_fastmode() {
                     self.hck_reader_fast(reader, &mut output)
                 } else {
@@ -361,12 +383,20 @@ where
             }
             HckInput::Path(path) => {
                 if self.config.try_decompress {
-                    let matcher = DecompressionMatcherBuilder::new()
-                        .associate("*.gz", "pigz", vec!["-d", "-c"])
-                        .build()?;
-                    let reader = DecompressionReaderBuilder::new()
-                        .matcher(matcher)
-                        .build(&path)?;
+                    let reader: Box<dyn Read> = if path
+                        .as_ref()
+                        .to_str()
+                        .map(|p| p.ends_with(".gz"))
+                        .unwrap_or(false)
+                    {
+                        Box::new(GzDecoder::new(File::open(&path)?))
+                    } else {
+                        Box::new(
+                            DecompressionReaderBuilder::new()
+                                // .matcher(matcher)
+                                .build(&path)?,
+                        )
+                    };
                     if self.allow_fastmode() {
                         self.hck_reader_fast(reader, &mut output)
                     } else {
@@ -403,7 +433,7 @@ where
         for line in iter {
             let mut s: Vec<Vec<&[u8]>> = shuffler;
             self.line_parser.parse_line(
-                lines::without_terminator(&line, self.config.line_terminator),
+                lines::without_terminator(line, self.config.line_terminator),
                 &mut s,
             );
             let items = s.iter_mut().flat_map(|s| s.drain(..));
@@ -529,7 +559,7 @@ where
             for line in iter {
                 let mut s: Vec<Vec<&[u8]>> = shuffler;
                 self.line_parser.parse_line(
-                    lines::without_terminator(&line, self.config.line_terminator),
+                    lines::without_terminator(line, self.config.line_terminator),
                     &mut s,
                 );
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1
+
+- PGO build fix
+
 ## v0.6.0
 
 - Speed up edge case where columns may have already been consumed i.e. `-f1-3,5,2-`

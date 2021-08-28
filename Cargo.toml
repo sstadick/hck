@@ -1,7 +1,7 @@
 [package]
 edition = "2018"
 name = "hck"
-version = "0.6.1"
+version = "0.6.2-alpha.0"
 authors = ["Seth Stadick <sstadick@gmail.com>"]
 license = "Unlicense/MIT"
 repository = "https://github.com/sstadick/hck"

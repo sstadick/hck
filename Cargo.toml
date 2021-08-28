@@ -28,11 +28,13 @@ anyhow = "1.0.41"
 bstr = "0.2.16"
 env_logger = "0.8.4"
 flate2 = { version = "1.0", features = ["zlib-ng-compat"], default-features = false }
+gzp = {version = "0.7.1", default-features = false, features = ["deflate_zlib_ng"]}
 grep-cli = "0.1.6"
 lazy_static = "1.4.0"
 log = "0.4.14"
 memmap = { package = "memmap2", version = "0.2.0" }
 memchr = "2.4.0"
+num_cpus = "1.13.0"
 regex = "1.5.4"
 ripline = "0.1"
 structopt = {version = "0.3.21", features = ["default"]}

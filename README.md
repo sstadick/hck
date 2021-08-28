@@ -22,6 +22,7 @@ It is meant to be simple and easy to use while exploring datasets.
 - Specification of output delimiter
 - Selection of columns by header string literal with the `-F` option, or by regex by setting the `-r` flag
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep). See [Decompression](#decompression).
+- Output can be gzip compressed using the multi-threaded compressors from [`gzp`](https://github.com/sstadick/gzp) with `-Z` flag
 - Exclude fields by index or by header.
 - Speed
 

@@ -28,7 +28,7 @@ anyhow = "1.0.41"
 bstr = "0.2.16"
 env_logger = "0.8.4"
 flate2 = { version = "1.0", features = ["zlib-ng-compat"], default-features = false }
-gzp = {version = "0.7.1", default-features = false, features = ["deflate_zlib_ng"]}
+gzp = {version = "0.8.0", default-features = false, features = ["deflate_zlib_ng","libdeflate"]}
 grep-cli = "0.1.6"
 lazy_static = "1.4.0"
 log = "0.4.14"

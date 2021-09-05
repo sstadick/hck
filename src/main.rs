@@ -2,7 +2,7 @@ use anyhow::{Context, Error, Result};
 use env_logger::Env;
 use flate2::Compression;
 use grep_cli::stdout;
-use gzp::{deflate::Gzip, ZBuilder};
+use gzp::{deflate::Bgzf, ZBuilder};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
     field_range::RegexOrStr,
@@ -194,7 +194,7 @@ fn main() -> Result<()> {
     // TODO: Support all flate2 compression targets via enum on `-Z`
     let mut writer: Box<dyn Write> = if opts.try_compress {
         Box::new(
-            ZBuilder::<Gzip, _>::new()
+            ZBuilder::<Bgzf, _>::new()
                 .compression_level(Compression::new(opts.compression_level))
                 .num_threads(opts.compression_threads)
                 .from_writer(writer),

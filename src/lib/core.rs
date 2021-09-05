@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Result;
 use bstr::ByteSlice;
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use grep_cli::DecompressionReaderBuilder;
 use memchr;
 use regex::bytes::Regex;
@@ -103,7 +103,7 @@ impl<'a> CoreConfig<'a> {
                         .map(|p| p.ends_with(".gz"))
                         .unwrap_or(false)
                     {
-                        Box::new(GzDecoder::new(File::open(&path)?))
+                        Box::new(MultiGzDecoder::new(File::open(&path)?))
                     } else {
                         Box::new(
                             DecompressionReaderBuilder::new()
@@ -371,7 +371,7 @@ where
                     self.hck_bytes(header.as_bytes(), &mut output)?;
                 }
                 let reader: Box<dyn Read> = if self.config.try_decompress {
-                    Box::new(GzDecoder::new(io::stdin()))
+                    Box::new(MultiGzDecoder::new(io::stdin()))
                 } else {
                     Box::new(io::stdin())
                 };
@@ -389,7 +389,7 @@ where
                         .map(|p| p.ends_with(".gz"))
                         .unwrap_or(false)
                     {
-                        Box::new(GzDecoder::new(File::open(&path)?))
+                        Box::new(MultiGzDecoder::new(File::open(&path)?))
                     } else {
                         Box::new(
                             DecompressionReaderBuilder::new()

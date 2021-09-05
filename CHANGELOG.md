@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2
+
+- Output BGZF output by default, which can be indexed and queried with tabix
+- Read input gzipped files a `MultiGzDecoder` which is more flexible
+
 ## v0.6.1
 
 - PGO build fix

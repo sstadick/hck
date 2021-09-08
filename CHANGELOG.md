@@ -1,9 +1,14 @@
 # Changelog
 
+## v0.6.3
+
+- Change the number of compression threads used by default
+- Update gzp version
+
 ## v0.6.2
 
 - Output BGZF output by default, which can be indexed and queried with tabix
-- Read input gzipped files a `MultiGzDecoder` which is more
+- Read input gzipped files a `MultiGzDecoder` which is more flexible
 
 ## v0.6.1
 

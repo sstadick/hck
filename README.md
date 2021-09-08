@@ -14,6 +14,7 @@ Additionally this tool allows for specification of the order of the output colum
 
 No single feature of `hck` on its own makes it stand out over `awk`, `cut`, `xsv` or other such tools. Where `hck` excels is making common things easy, such as reordering output fields, or splitting records on a weird delimiter.
 It is meant to be simple and easy to use while exploring datasets.
+Think of this as filling a gap between `cut` and `awk`.
 
 ## Features
 
@@ -41,7 +42,11 @@ brew tap sstadick/hck
 brew install hck
 ```
 
-\* Built with profile guided optimizations
+- Conda
+
+```bash
+conda install -c bioconda hck
+```
 
 - MacPorts
 

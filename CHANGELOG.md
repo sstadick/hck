@@ -3,7 +3,7 @@
 ## v0.6.2
 
 - Output BGZF output by default, which can be indexed and queried with tabix
-- Read input gzipped files a `MultiGzDecoder` which is more flexible
+- Read input gzipped files a `MultiGzDecoder` which is more
 
 ## v0.6.1
 

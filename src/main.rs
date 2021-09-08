@@ -26,8 +26,18 @@ use structopt::{clap::AppSettings::ColoredHelp, StructOpt};
 use termcolor::ColorChoice;
 
 lazy_static! {
-    /// Return the number of cpus as an &str
-    pub static ref NUM_CPU: String = num_cpus::get().to_string();
+    /// Default number of compression threads to use.
+    ///
+    /// This will be 4 if >= 4 threads are present, otherwise it will
+    /// be num_cpus - 1.
+    pub static ref DEFAULT_CPUS: String = {
+        let num_cores = num_cpus::get();
+        if num_cores < 4 {
+            num_cores.saturating_sub(1)
+        } else {
+            4
+        }.to_string()
+    };
 }
 
 pub mod built_info {
@@ -169,7 +179,7 @@ struct Opts {
     try_compress: bool,
 
     /// Threads to use for compression, 0 will result in `hck` staying single threaded.
-    #[structopt(short = "t", long, default_value=NUM_CPU.as_str())]
+    #[structopt(short = "t", long, default_value=DEFAULT_CPUS.as_str())]
     compression_threads: usize,
 
     /// Compression level

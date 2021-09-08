@@ -42,10 +42,10 @@ brew tap sstadick/hck
 brew install hck
 ```
 
-- Conda
+- Conda (coming soon!)
 
 ```bash
-conda install -c bioconda hck
+conda install -c conda-forge hck
 ```
 
 - MacPorts

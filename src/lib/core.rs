@@ -462,10 +462,25 @@ where
         let sep = self.config.delimiter[0];
         let newline = self.config.line_terminator.as_byte();
 
-        let iter = memchr::memchr2_iter(sep, newline, bytes);
+        let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
+        let mut start = 0;
+        // Peek at first matches to check if they are empty lines, consume them if they are.
+        // We need to skip ahead to the point where we have values pushed onto lines before
+        // hitting a newline.
+        if let Some(&index) = iter.peek() {
+            if index == 0 && bytes[index] == newline {
+                output.join_append(
+                    self.config.output_delimiter,
+                    std::iter::empty(),
+                    &self.config.line_terminator,
+                )?;
+                // Consume the iterator position
+                start = index + 1;
+                let _ = iter.next();
+            }
+        }
 
         let mut line = vec![];
-        let mut start = 0;
         for index in iter {
             if bytes[index] == sep {
                 line.push((start, index - 1));
@@ -512,8 +527,24 @@ where
         let mut line = vec![];
         while reader.fill().unwrap() {
             let bytes = reader.buffer();
-            let iter = memchr::memchr2_iter(sep, newline, bytes);
+            let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
+
+            // Peek at first matches to check if they are empty lines, consume them if they are.
+            // We need to skip ahead to the point where we have values pushed onto lines before
+            // hitting a newline.
             let mut start = 0;
+            if let Some(&index) = iter.peek() {
+                if index == 0 && bytes[index] == newline {
+                    output.join_append(
+                        self.config.output_delimiter,
+                        std::iter::empty(),
+                        &self.config.line_terminator,
+                    )?;
+                    start = index + 1;
+                    // Consume the iterator position
+                    let _ = iter.next();
+                }
+            }
 
             for index in iter {
                 if bytes[index] == sep {

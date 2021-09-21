@@ -80,3 +80,9 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
+
+      - name: Install cargo-bundle-licenses
+        run: cargo install cargo-bundle-licenses
+      
+      - name: Check licenses
+        run: cargo bundle-licenses --format yaml --output CI.THIRDPARTY.yml --previous THIRDPARTY.yml --check-previous

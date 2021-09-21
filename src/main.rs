@@ -1420,6 +1420,8 @@ mod test {
             vec![""],
             vec![""],
             vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec![""],
+            vec![""],
             vec!["1", "2", "3", "4", "5", "6", "7"],
         ];
         write_file(&input_file, data, hck_delim);
@@ -1433,6 +1435,8 @@ mod test {
                 vec![""],
                 vec![""],
                 vec!["b", "c", "d", "e", "f", "g"],
+                vec![""],
+                vec![""],
                 vec!["2", "3", "4", "5", "6", "7"]
             ]
         );

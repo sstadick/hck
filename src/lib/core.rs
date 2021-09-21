@@ -466,7 +466,7 @@ where
         // Peek at first matches to check if they are empty lines, consume them if they are.
         // We need to skip ahead to the point where we have values pushed onto lines before
         // hitting a newline.
-        while let Some(&index) = iter.peek() {
+        if let Some(&index) = iter.peek() {
             if index == 0 && bytes[index] == newline {
                 output.join_append(
                     self.config.output_delimiter,
@@ -475,8 +475,6 @@ where
                 )?;
                 // Consume the iterator position
                 let _ = iter.next();
-            } else {
-                break;
             }
         }
 
@@ -533,7 +531,7 @@ where
             // Peek at first matches to check if they are empty lines, consume them if they are.
             // We need to skip ahead to the point where we have values pushed onto lines before
             // hitting a newline.
-            while let Some(&index) = iter.peek() {
+            if let Some(&index) = iter.peek() {
                 if index == 0 && bytes[index] == newline {
                     output.join_append(
                         self.config.output_delimiter,
@@ -542,8 +540,6 @@ where
                     )?;
                     // Consume the iterator position
                     let _ = iter.next();
-                } else {
-                    break;
                 }
             }
 

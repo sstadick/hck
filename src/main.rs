@@ -1415,7 +1415,7 @@ mod test {
         let input_file = tmp.path().join("input.txt");
         let output_file = tmp.path().join("output.txt");
         // 4-5 should not be repeated at the end and only written once.
-        let opts = build_opts_not_regex(&input_file, &output_file, "2,3,4-", no_mmap, hck_delim);
+        let opts = build_opts_not_regex(&input_file, &output_file, "1,2", no_mmap, hck_delim);
         let data = vec![
             vec![""],
             vec![""],
@@ -1434,10 +1434,10 @@ mod test {
             vec![
                 vec![""],
                 vec![""],
-                vec!["b", "c", "d", "e", "f", "g"],
+                vec!["a", "b"],
                 vec![""],
                 vec![""],
-                vec!["2", "3", "4", "5", "6", "7"]
+                vec!["1", "2"]
             ]
         );
     }

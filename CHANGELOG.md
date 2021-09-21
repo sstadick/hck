@@ -1,13 +1,5 @@
 # Changelog
 
-## v0.6.5
-
-- [Bugfix](https://github.com/sstadick/hck/issues/38) for files using fast-path code that have empty first lines
-
-## v0.6.4
-
-- Added thirdparty license in prep for conda-forge
-
 ## v0.6.3
 
 - Change the number of compression threads used by default

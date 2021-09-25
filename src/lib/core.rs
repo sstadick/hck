@@ -5,6 +5,7 @@
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{
+    buffer_parser::BufferParser,
     field_range::{FieldRange, RegexOrStr},
     line_parser::LineParser,
     mmap::MmapChoice,
@@ -411,7 +412,7 @@ where
                             self.hck_bytes(mmap.as_bytes(), &mut output)
                         }
                     } else if self.allow_fastmode() {
-                        self.hck_reader_faster(file, &mut output)
+                        self.hck_reader_cleaner(file, &mut output)
                     } else {
                         self.hck_reader(file, &mut output)
                     }
@@ -507,6 +508,27 @@ where
             } else {
                 unreachable!()
             }
+        }
+        Ok(())
+    }
+
+    pub fn hck_reader_cleaner<R: Read, W: Write>(
+        &mut self,
+        reader: R,
+        mut output: W,
+    ) -> Result<(), io::Error> {
+        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
+        let mut buffer_parser = BufferParser::new(
+            self.config.line_terminator,
+            self.config.output_delimiter,
+            self.fields,
+            self.config.delimiter[0],
+        );
+
+        while reader.fill()? {
+            buffer_parser.process_buffer(reader.buffer(), &mut output)?;
+            buffer_parser.reset();
+            reader.consume(reader.buffer().len());
         }
         Ok(())
     }
@@ -680,7 +702,7 @@ where
 }
 
 /// A trait for adding `join_append` to a writer.
-trait JoinAppend {
+pub trait JoinAppend {
     /// Given an input iterator of items, write them with a serparator and a newline.
     fn join_append<'b>(
         &mut self,

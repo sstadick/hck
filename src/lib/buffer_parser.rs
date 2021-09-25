@@ -50,6 +50,20 @@ impl<'a> BufferParser<'a> {
         mut output: W,
     ) -> Result<(), io::Error> {
         let mut line = vec![];
+
+        // TODO: move to fn
+        // Advace passt first newline
+        if let Some(byte) = buffer.get(0) {
+            if *byte == self.newline {
+                output.join_append(
+                    self.output_delimiter,
+                    std::iter::empty(),
+                    &self.line_terminator,
+                )?;
+                self.offset += 1;
+            }
+        }
+
         while self.offset < buffer.len() {
             self.fill_line(&mut line, buffer);
             let items = self.fields.iter().flat_map(|f| {

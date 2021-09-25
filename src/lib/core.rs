@@ -348,10 +348,10 @@ where
     /// delimiter is 1 byte, newline is 1 bytes, and we are not using a regex
     fn allow_fastmode(&self) -> bool {
         // false
-        self.config.delimiter.len() == 1
-            && self.config.line_terminator.as_bytes().len() == 1
-            && !self.config.is_parser_regex
-            && self.are_fields_pos_sorted()
+        dbg!(self.config.delimiter.len() == 1)
+            && dbg!(self.config.line_terminator.as_bytes().len() == 1)
+            && dbg!(!self.config.is_parser_regex)
+            && dbg!(self.are_fields_pos_sorted())
     }
 
     pub fn hck_input<P, W>(
@@ -411,7 +411,7 @@ where
                             self.hck_bytes(mmap.as_bytes(), &mut output)
                         }
                     } else if self.allow_fastmode() {
-                        self.hck_reader_fast(file, &mut output)
+                        self.hck_reader_faster(file, &mut output)
                     } else {
                         self.hck_reader(file, &mut output)
                     }
@@ -462,6 +462,9 @@ where
         let sep = self.config.delimiter[0];
         let newline = self.config.line_terminator.as_byte();
 
+        // use memchr2 to find up to the max column range
+        // use memchr to search forward from there
+
         let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
         let mut start = 0;
         // Peek at first matches to check if they are empty lines, consume them if they are.
@@ -508,6 +511,72 @@ where
         Ok(())
     }
 
+    pub fn hck_reader_faster<R: Read, W: Write>(
+        &mut self,
+        reader: R,
+        mut output: W,
+    ) -> Result<(), io::Error> {
+        eprintln!("In hck_reader_faster");
+
+        let sep = self.config.delimiter[0];
+        let newline = self.config.line_terminator.as_byte();
+
+        // Use line buffer reader so we know that buffers align to line endings
+        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
+        let mut line = vec![];
+        let max_field = self.fields.last().map_or(usize::MAX, |f| f.high + 1);
+        while reader.fill()? {
+            let mut field_count = 0;
+            let mut offset = 0;
+            let bytes = reader.buffer();
+            while offset < bytes.len() {
+                let iter = memchr::memchr2_iter(sep, newline, &bytes[offset..]);
+
+                let mut line_offset = 0;
+                let mut found_newline = false;
+                for index in iter {
+                    if bytes[offset + index] == sep {
+                        field_count += 1;
+                    } else {
+                        found_newline = true;
+                    }
+                    line.push((line_offset, index - 1));
+                    line_offset = index + 1;
+                    if found_newline || field_count == max_field {
+                        // write output line
+                        let items = self.fields.iter().flat_map(|f| {
+                            let slice = line
+                                .get(f.low..=min(f.high, line.len().saturating_sub(1)))
+                                .unwrap_or(&[]);
+                            slice
+                                .iter()
+                                .map(|(start, stop)| &bytes[offset + *start..=offset + *stop])
+                        });
+                        output.join_append(
+                            self.config.output_delimiter,
+                            items,
+                            &self.config.line_terminator,
+                        )?;
+                        field_count = 0;
+                        line.clear();
+                        break;
+                    }
+                }
+
+                if !found_newline {
+                    let end = memchr::memchr(newline, &bytes[offset + line_offset..])
+                        .expect("Can't fine newline");
+                    offset = offset + line_offset + end + 1;
+                } else {
+                    offset += line_offset;
+                }
+            }
+
+            reader.consume(reader.buffer().len());
+        }
+        Ok(())
+    }
+
     /// Fast mode iteration over lines in a reader.
     ///
     /// This expects the seperator to be a single byte and the newline to be a singel byte.
@@ -520,12 +589,13 @@ where
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
+        eprintln!("In hck_reader_fast");
         let sep = self.config.delimiter[0];
         let newline = self.config.line_terminator.as_byte();
 
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
         let mut line = vec![];
-        while reader.fill().unwrap() {
+        while reader.fill()? {
             let bytes = reader.buffer();
             let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
 
@@ -581,10 +651,11 @@ where
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
+        eprintln!("In hck_reader");
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
         let mut shuffler: Vec<Vec<&'static [u8]>> =
             vec![vec![]; self.fields.iter().map(|f| f.pos).max().unwrap() + 1];
-        while reader.fill().unwrap() {
+        while reader.fill()? {
             let iter = LineIter::new(self.config.line_terminator.as_byte(), reader.buffer());
 
             for line in iter {

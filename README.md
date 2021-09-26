@@ -42,7 +42,7 @@ brew tap sstadick/hck
 brew install hck
 ```
 
-- Conda (coming soon!)
+- Conda
 
 ```bash
 conda install -c conda-forge hck

@@ -2,7 +2,7 @@
 
 ## v0.6.6
 
-- Performance improvements. On literal byte separators `hck` is now 16% faster than it previously was and is much faster on inputs that only use the first few fields in a line.
+- Performance improvements. On literal byte separators `hck` is now faster than it previously was and is much faster on inputs that only use the first few fields in a line.
 
 ## v0.6.5
 

@@ -5,16 +5,15 @@
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{
-    buffer_parser::BufferParser,
     field_range::{FieldRange, RegexOrStr},
     line_parser::LineParser,
     mmap::MmapChoice,
+    single_byte_delim_parser::SingleByteDelimParser,
 };
 use anyhow::Result;
 use bstr::ByteSlice;
 use flate2::read::MultiGzDecoder;
 use grep_cli::DecompressionReaderBuilder;
-use memchr;
 use regex::bytes::Regex;
 use ripline::{
     line_buffer::{LineBuffer, LineBufferReader},
@@ -22,7 +21,6 @@ use ripline::{
     LineTerminator,
 };
 use std::{
-    cmp::min,
     fs::File,
     io::{self, BufRead, BufReader, Read, Write},
     path::Path,
@@ -348,11 +346,10 @@ where
     ///
     /// delimiter is 1 byte, newline is 1 bytes, and we are not using a regex
     fn allow_fastmode(&self) -> bool {
-        // false
-        dbg!(self.config.delimiter.len() == 1)
-            && dbg!(self.config.line_terminator.as_bytes().len() == 1)
-            && dbg!(!self.config.is_parser_regex)
-            && dbg!(self.are_fields_pos_sorted())
+        self.config.delimiter.len() == 1
+            && self.config.line_terminator.as_bytes().len() == 1
+            && !self.config.is_parser_regex
+            && self.are_fields_pos_sorted()
     }
 
     pub fn hck_input<P, W>(
@@ -412,7 +409,7 @@ where
                             self.hck_bytes(mmap.as_bytes(), &mut output)
                         }
                     } else if self.allow_fastmode() {
-                        self.hck_reader_cleaner(file, &mut output)
+                        self.hck_reader_fast(file, &mut output)
                     } else {
                         self.hck_reader(file, &mut output)
                     }
@@ -455,70 +452,31 @@ where
     /// Instead of  seaching for linebreaks, then splitting up the line on the `sep`,
     /// fast mode looks for either `sep` or `newline` at the same time, so instead of two passes
     /// over the bytes we only make one pass.
-    pub fn hck_bytes_fast<W: Write>(
-        &mut self,
-        bytes: &[u8],
-        mut output: W,
-    ) -> Result<(), io::Error> {
-        let sep = self.config.delimiter[0];
-        let newline = self.config.line_terminator.as_byte();
-
-        // use memchr2 to find up to the max column range
-        // use memchr to search forward from there
-
-        let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
-        let mut start = 0;
-        // Peek at first matches to check if they are empty lines, consume them if they are.
-        // We need to skip ahead to the point where we have values pushed onto lines before
-        // hitting a newline.
-        if let Some(&index) = iter.peek() {
-            if index == 0 && bytes[index] == newline {
-                output.join_append(
-                    self.config.output_delimiter,
-                    std::iter::empty(),
-                    &self.config.line_terminator,
-                )?;
-                // Consume the iterator position
-                start = index + 1;
-                let _ = iter.next();
-            }
-        }
-
-        let mut line = vec![];
-        for index in iter {
-            if bytes[index] == sep {
-                line.push((start, index - 1));
-                start = index + 1;
-            } else if bytes[index] == newline {
-                line.push((start, index - 1));
-                let items = self.fields.iter().flat_map(|f| {
-                    let slice = line
-                        .get(f.low..=min(f.high, line.len().saturating_sub(1)))
-                        .unwrap_or(&[]);
-                    slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
-                });
-
-                output.join_append(
-                    self.config.output_delimiter,
-                    items,
-                    &self.config.line_terminator,
-                )?;
-                start = index + 1;
-                line.clear();
-            } else {
-                unreachable!()
-            }
-        }
+    pub fn hck_bytes_fast<W: Write>(&mut self, bytes: &[u8], output: W) -> Result<(), io::Error> {
+        let mut buffer_parser = SingleByteDelimParser::new(
+            self.config.line_terminator,
+            self.config.output_delimiter,
+            self.fields,
+            self.config.delimiter[0],
+        );
+        buffer_parser.process_buffer(bytes, output)?;
         Ok(())
     }
 
-    pub fn hck_reader_cleaner<R: Read, W: Write>(
+    /// Fast mode iteration over lines in a reader.
+    ///
+    /// This expects the separator to be a single byte and the newline to be a single byte.
+    ///
+    /// Instead of  seaching for linebreaks, then splitting up the line on the `sep`,
+    /// fast mode looks for either `sep` or `newline` at the same time, so instead of two passes
+    /// over the bytes we only make one pass.
+    pub fn hck_reader_fast<R: Read, W: Write>(
         &mut self,
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
-        let mut buffer_parser = BufferParser::new(
+        let mut buffer_parser = SingleByteDelimParser::new(
             self.config.line_terminator,
             self.config.output_delimiter,
             self.fields,
@@ -533,147 +491,12 @@ where
         Ok(())
     }
 
-    pub fn hck_reader_faster<R: Read, W: Write>(
-        &mut self,
-        reader: R,
-        mut output: W,
-    ) -> Result<(), io::Error> {
-        eprintln!("In hck_reader_faster");
-
-        let sep = self.config.delimiter[0];
-        let newline = self.config.line_terminator.as_byte();
-
-        // Use line buffer reader so we know that buffers align to line endings
-        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
-        let mut line = vec![];
-        let max_field = self.fields.last().map_or(usize::MAX, |f| f.high + 1);
-        while reader.fill()? {
-            let mut field_count = 0;
-            let mut offset = 0;
-            let bytes = reader.buffer();
-            while offset < bytes.len() {
-                let iter = memchr::memchr2_iter(sep, newline, &bytes[offset..]);
-
-                let mut line_offset = 0;
-                let mut found_newline = false;
-                for index in iter {
-                    if bytes[offset + index] == sep {
-                        field_count += 1;
-                    } else {
-                        found_newline = true;
-                    }
-                    line.push((line_offset, index - 1));
-                    line_offset = index + 1;
-                    if found_newline || field_count == max_field {
-                        // write output line
-                        let items = self.fields.iter().flat_map(|f| {
-                            let slice = line
-                                .get(f.low..=min(f.high, line.len().saturating_sub(1)))
-                                .unwrap_or(&[]);
-                            slice
-                                .iter()
-                                .map(|(start, stop)| &bytes[offset + *start..=offset + *stop])
-                        });
-                        output.join_append(
-                            self.config.output_delimiter,
-                            items,
-                            &self.config.line_terminator,
-                        )?;
-                        field_count = 0;
-                        line.clear();
-                        break;
-                    }
-                }
-
-                if !found_newline {
-                    let end = memchr::memchr(newline, &bytes[offset + line_offset..])
-                        .expect("Can't fine newline");
-                    offset = offset + line_offset + end + 1;
-                } else {
-                    offset += line_offset;
-                }
-            }
-
-            reader.consume(reader.buffer().len());
-        }
-        Ok(())
-    }
-
-    /// Fast mode iteration over lines in a reader.
-    ///
-    /// This expects the seperator to be a single byte and the newline to be a singel byte.
-    ///
-    /// Instead of  seaching for linebreaks, then splitting up the line on the `sep`,
-    /// fast mode looks for either `sep` or `newline` at the same time, so instead of two passes
-    /// over the bytes we only make one pass.
-    pub fn hck_reader_fast<R: Read, W: Write>(
-        &mut self,
-        reader: R,
-        mut output: W,
-    ) -> Result<(), io::Error> {
-        eprintln!("In hck_reader_fast");
-        let sep = self.config.delimiter[0];
-        let newline = self.config.line_terminator.as_byte();
-
-        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
-        let mut line = vec![];
-        while reader.fill()? {
-            let bytes = reader.buffer();
-            let mut iter = memchr::memchr2_iter(sep, newline, bytes).peekable();
-
-            // Peek at first matches to check if they are empty lines, consume them if they are.
-            // We need to skip ahead to the point where we have values pushed onto lines before
-            // hitting a newline.
-            let mut start = 0;
-            if let Some(&index) = iter.peek() {
-                if index == 0 && bytes[index] == newline {
-                    output.join_append(
-                        self.config.output_delimiter,
-                        std::iter::empty(),
-                        &self.config.line_terminator,
-                    )?;
-                    start = index + 1;
-                    // Consume the iterator position
-                    let _ = iter.next();
-                }
-            }
-
-            for index in iter {
-                if bytes[index] == sep {
-                    line.push((start, index - 1));
-                    start = index + 1;
-                } else if bytes[index] == newline {
-                    line.push((start, index - 1));
-                    let items = self.fields.iter().flat_map(|f| {
-                        let slice = line
-                            .get(f.low..=min(f.high, line.len().saturating_sub(1)))
-                            .unwrap_or(&[]);
-                        slice.iter().map(|(start, stop)| &bytes[*start..=*stop])
-                    });
-                    output.join_append(
-                        self.config.output_delimiter,
-                        items,
-                        &self.config.line_terminator,
-                    )?;
-                    start = index + 1;
-                    line.clear();
-                } else {
-                    unreachable!()
-                }
-            }
-
-            reader.consume(reader.buffer().len());
-        }
-        Ok(())
-    }
-
     /// Process lines from a reader.
     pub fn hck_reader<R: Read, W: Write>(
         &mut self,
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
-        eprintln!("In hck_reader");
         let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
         let mut shuffler: Vec<Vec<&'static [u8]>> =
             vec![vec![]; self.fields.iter().map(|f| f.pos).max().unwrap() + 1];

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.6
+
+- Performance improvements. On literal byte separators `hck` is now 16% faster than it previously was and is much faster on inputs that only use the first few fields in a line.
+
 ## v0.6.5
 
 - [Bugfix](https://github.com/sstadick/hck/issues/38) for files using fast-path code that have empty first lines

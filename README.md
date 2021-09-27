@@ -45,6 +45,7 @@ brew install hck
 - Conda
 
 ```bash
+# Note, this version lags by about a day
 conda install -c conda-forge hck
 ```
 

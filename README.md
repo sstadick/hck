@@ -253,15 +253,16 @@ PRs are welcome for benchmarks with more tools, or improved (but still realistic
 
 | Command                                                      |      Mean [s] | Min [s] | Max [s] |    Relative |
 | :----------------------------------------------------------- | ------------: | ------: | ------: | ----------: |
-| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.464 ± 0.002 |   1.462 |   1.466 |        1.00 |
-| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.642 ± 0.003 |   1.640 |   1.648 | 1.12 ± 0.00 |
-| `hck -d, -f1,8,19  ./hyper_data.txt > /dev/null`             | 1.527 ± 0.002 |   1.525 |   1.529 | 1.04 ± 0.00 |
-| `hck -d, -f1,8,19  --no-mmap ./hyper_data.txt > /dev/null`   | 1.887 ± 0.004 |   1.883 |   1.893 | 1.29 ± 0.00 |
-| `choose -f , -i ./hyper_data.txt 0 7 18  > /dev/null`        | 4.323 ± 0.034 |   4.293 |   4.370 | 2.95 ± 0.02 |
-| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.723 ± 0.003 |   1.719 |   1.728 | 1.18 ± 0.00 |
-| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.569 ± 0.004 |   5.563 |   5.573 | 3.80 ± 0.01 |
-| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 4.916 ± 0.014 |   4.897 |   4.933 | 3.36 ± 0.01 |
-| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 6.792 ± 0.017 |   6.769 |   6.813 | 4.64 ± 0.01 |
+| `hck -Ld, -f1,8,19 ./hyper_data.txt > /dev/null`             | 1.198 ± 0.015 |   1.185 |   1.215 |        1.00 |
+| `hck -Ld, -f1,8,19 --no-mmap ./hyper_data.txt > /dev/null`   | 1.349 ± 0.029 |   1.320 |   1.389 | 1.13 ± 0.03 |
+| `hck -d, -f1,8,19  ./hyper_data.txt > /dev/null`             | 1.649 ± 0.023 |   1.624 |   1.673 | 1.38 ± 0.03 |
+| `hck -d, -f1,8,19  --no-mmap ./hyper_data.txt > /dev/null`   | 1.869 ± 0.019 |   1.842 |   1.894 | 1.56 ± 0.02 |
+| `tsv-select -d, -f 1,8,19 ./hyper_data.txt > /dev/null`      | 1.702 ± 0.021 |   1.687 |   1.734 | 1.42 ± 0.02 |
+| `choose -f , -i ./hyper_data.txt 0 7 18  > /dev/null`        | 4.285 ± 0.092 |   4.214 |   4.428 | 3.58 ± 0.09 |
+| `xsv select -d, 1,8,19 ./hyper_data.txt > /dev/null`         | 5.693 ± 0.042 |   5.635 |   5.745 | 4.75 ± 0.07 |
+| `awk -F, '{print $1, $8, $19}' ./hyper_data.txt > /dev/null` | 4.993 ± 0.029 |   4.959 |   5.030 | 4.17 ± 0.06 |
+| `cut -d, -f1,8,19 ./hyper_data.txt > /dev/null`              | 7.541 ± 1.250 |   6.827 |   9.769 | 6.30 ± 1.05 |
+
 
 ### Multi-character delimiter benchmark
 

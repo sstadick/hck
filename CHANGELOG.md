@@ -2,7 +2,7 @@
 
 ## v0.6.7
 
-- [Bugfiz](https://github.com/sstadick/hck/issues/44) to allow for `-` character as separators.
+- [Bugfiz](https://github.com/sstadick/hck/issues/44) allow arguments of options to start with a "-".
 
 ## v0.6.6
 

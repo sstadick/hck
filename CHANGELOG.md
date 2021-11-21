@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0
+
+- [Improvement](https://github.com/sstadick/hck/issues/46#issuecomment-974189408) Allow for passing escaped sequences in for the input and output delimiteres. i.e '\t' or '\n' can be passed in directly instead of needing to add $'\n' on the command line.
+- [Improvement](https://github.com/sstadick/hck/issues/46#issuecomment-974189408) Add a flag `-I` / `--use-input-delim` to reuse the input delimiter if it is a literal as the output delimiter. An error will be raised if `-L` is not specified or if `-D` is specified.
+
+
 ## v0.6.6
 
 - Performance improvements. On literal byte separators `hck` is now faster than it previously was and is much faster on inputs that only use the first few fields in a line.

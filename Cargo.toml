@@ -26,9 +26,9 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.41"
 bstr = "0.2.16"
-env_logger = "0.8.4"
+env_logger = "0.9.0"
 flate2 = { version = "1.0", features = ["zlib-ng-compat"], default-features = false }
-gzp = {version = "0.8.1", default-features = false, features = ["deflate_zlib_ng","libdeflate"]}
+gzp = {version = "0.9.2", default-features = false, features = ["deflate_zlib_ng","libdeflate"]}
 grep-cli = "0.1.6"
 lazy_static = "1.4.0"
 log = "0.4.14"
@@ -37,7 +37,7 @@ memchr = "2.4.0"
 num_cpus = "1.13.0"
 regex = "1.5.4"
 ripline = "0.1"
-structopt = {version = "0.3.21", features = ["default"]}
+structopt = {version = "0.3.25", features = ["default"]}
 termcolor = "1.1.2"
 thiserror = "1.0.25"
 

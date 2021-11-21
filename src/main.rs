@@ -132,11 +132,11 @@ struct Opts {
     input: Vec<PathBuf>,
 
     /// Output file to write to, defaults to stdout
-    #[structopt(short = "o", long)]
+    #[structopt(short = "o", long, allow_hyphen_values = true)]
     output: Option<PathBuf>,
 
     /// Delimiter to use on input files, this is a substring literal by default. To treat it as a literal add the `-L` flag.
-    #[structopt(short = "d", long, default_value = r"\s+")]
+    #[structopt(short = "d", long, default_value = r"\s+", allow_hyphen_values = true)]
     delimiter: String,
 
     /// Treat the delimiter as a string literal. This can significantly improve performance, especially for single byte delimiters.
@@ -153,26 +153,38 @@ struct Opts {
     use_input_delim: bool,
 
     /// Delimiter string to use on outputs
-    #[structopt(short = "D", long, default_value = "\t")]
+    #[structopt(short = "D", long, default_value = "\t", allow_hyphen_values = true)]
     output_delimiter: String,
 
     /// Fields to keep in the output, ex: 1,2-,-5,2-5. Fields are 1-based and inclusive.
-    #[structopt(short = "f", long)]
+    #[structopt(short = "f", long, allow_hyphen_values = true)]
     fields: Option<String>,
 
     /// Fields to exclude from the output, ex: 3,9-11,15-. Exclude fields are 1 based and inclusive.
     /// Exclude fields take precedence over `fields`.
-    #[structopt(short = "e", long)]
+    #[structopt(short = "e", long, allow_hyphen_values = true)]
     exclude: Option<String>,
 
     /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
     /// Add the `-r` flag to treat as a regex.
-    #[structopt(short = "E", long, multiple = true, number_of_values = 1)]
+    #[structopt(
+        short = "E",
+        long,
+        multiple = true,
+        number_of_values = 1,
+        allow_hyphen_values = true
+    )]
     exclude_header: Option<Vec<Regex>>,
 
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
     /// by default. add the `-r` flag to treat it as a regex.
-    #[structopt(short = "F", long, multiple = true, number_of_values = 1)]
+    #[structopt(
+        short = "F",
+        long,
+        multiple = true,
+        number_of_values = 1,
+        allow_hyphen_values = true
+    )]
     header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals

@@ -1,7 +1,7 @@
 use anyhow::{Context, Error, Result};
 use env_logger::Env;
 use flate2::Compression;
-use grep_cli::stdout;
+use grep_cli::{stdout, unescape};
 use gzp::{deflate::Bgzf, ZBuilder};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
@@ -143,6 +143,15 @@ struct Opts {
     #[structopt(short = "L", long)]
     delim_is_literal: bool,
 
+    /// Use the input delimiter as the output delimiter if the input is literal and no other output delimiter has been set.
+    #[structopt(
+        short = "I",
+        long,
+        requires("delim-is-literal"),
+        conflicts_with("output-delimiter")
+    )]
+    use_input_delim: bool,
+
     /// Delimiter string to use on outputs
     #[structopt(short = "D", long, default_value = "\t", allow_hyphen_values = true)]
     output_delimiter: String,
@@ -258,10 +267,17 @@ fn main() -> Result<()> {
     } else {
         unsafe { MmapChoice::auto() }
     };
+
+    let out_delim = if opts.delim_is_literal && opts.use_input_delim {
+        unescape(&opts.delimiter)
+    } else {
+        unescape(&opts.output_delimiter)
+    };
+
     let conf = conf_builder
         .mmap(mmap)
         .delimiter(opts.delimiter.as_bytes())
-        .output_delimiter(opts.output_delimiter.as_bytes())
+        .output_delimiter(&out_delim)
         .is_regex_parser(!opts.delim_is_literal)
         .try_decompress(opts.try_decompress)
         .fields(opts.fields.as_deref())
@@ -309,10 +325,11 @@ fn run<W: Write>(
             core.hck_input(input, writer, extra)?;
         }
         RegexOrStr::Str(s) => {
+            let s = unescape(s);
             let mut core = Core::new(
                 conf,
                 &fields,
-                SubStrLineParser::new(&fields, s.as_bytes()),
+                SubStrLineParser::new(&fields, &s),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;
@@ -345,6 +362,7 @@ mod test {
             delimiter: delimiter.to_string(),
             delim_is_literal: false,
             output_delimiter: "\t".to_owned(),
+            use_input_delim: false,
             fields: Some(fields.to_owned()),
             header_field: None,
             header_is_regex: true,
@@ -373,6 +391,7 @@ mod test {
             delimiter: delimiter.to_string(),
             delim_is_literal: true,
             output_delimiter: "\t".to_owned(),
+            use_input_delim: false,
             fields: Some(fields.to_owned()),
             header_field: None,
             header_is_regex: true,
@@ -406,6 +425,7 @@ mod test {
             delimiter: delimiter.to_string(),
             delim_is_literal,
             output_delimiter: "\t".to_owned(),
+            use_input_delim: false,
             fields: fields.map(|f| f.to_owned()),
             header_field,
             header_is_regex,

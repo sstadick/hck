@@ -28,16 +28,16 @@ pub enum FieldError {
 }
 
 #[derive(Debug, Clone)]
-pub enum RegexOrStr<'b> {
+pub enum RegexOrString {
     Regex(Regex),
-    Str(&'b str),
+    String(String),
 }
 
-impl<'b> RegexOrStr<'b> {
-    fn split(&'b self, line: &'b [u8]) -> Box<dyn Iterator<Item = &'b [u8]> + 'b> {
+impl RegexOrString {
+    fn split<'a>(&'a self, line: &'a [u8]) -> Box<dyn Iterator<Item = &'a [u8]> + 'a> {
         match self {
-            RegexOrStr::Regex(r) => Box::new(r.split(line)),
-            RegexOrStr::Str(s) => Box::new(line.split_str(s)),
+            RegexOrString::Regex(r) => Box::new(r.split(line)),
+            RegexOrString::String(s) => Box::new(line.split_str(s)),
         }
     }
 }
@@ -151,7 +151,7 @@ impl FieldRange {
     pub fn from_header_list(
         list: &[Regex],
         header: &[u8],
-        delim: &RegexOrStr,
+        delim: &RegexOrString,
         header_is_regex: bool,
         allow_missing: bool,
     ) -> Result<Vec<FieldRange>, FieldError> {
@@ -349,7 +349,7 @@ mod test {
     fn test_parse_header_fields() {
         let header = b"is_cat-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
-        let delim = RegexOrStr::Regex(delim);
+        let delim = RegexOrString::Regex(delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),
@@ -378,7 +378,7 @@ mod test {
     fn test_parse_header_fields_literal() {
         let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
-        let delim = RegexOrStr::Regex(delim);
+        let delim = RegexOrString::Regex(delim);
         let header_fields = vec![Regex::new(r"is").unwrap()];
         let fields =
             FieldRange::from_header_list(&header_fields, header, &delim, false, false).unwrap();
@@ -396,7 +396,7 @@ mod test {
     fn test_parse_header_fields_literal_header_not_found() {
         let header = b"is_cat-is-isdog-wascow-was_is_apple-12345-!$%*(_)";
         let delim = Regex::new("-").unwrap();
-        let delim = RegexOrStr::Regex(delim);
+        let delim = RegexOrString::Regex(delim);
         let header_fields = vec![
             Regex::new(r"^is_.*$").unwrap(),
             Regex::new("dog").unwrap(),

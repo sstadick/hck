@@ -5,7 +5,7 @@ use grep_cli::{stdout, unescape};
 use gzp::{deflate::Bgzf, ZBuilder};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
-    field_range::RegexOrStr,
+    field_range::RegexOrString,
     line_parser::{RegexLineParser, SubStrLineParser},
     mmap::MmapChoice,
 };
@@ -315,7 +315,7 @@ fn run<W: Write>(
     }
 
     match conf.parsed_delim() {
-        RegexOrStr::Regex(regex) => {
+        RegexOrString::Regex(regex) => {
             let mut core = Core::new(
                 conf,
                 &fields,
@@ -324,12 +324,12 @@ fn run<W: Write>(
             );
             core.hck_input(input, writer, extra)?;
         }
-        RegexOrStr::Str(s) => {
-            let s = unescape(s);
+        RegexOrString::String(s) => {
+            // let s = unescape(s);
             let mut core = Core::new(
                 conf,
                 &fields,
-                SubStrLineParser::new(&fields, &s),
+                SubStrLineParser::new(&fields, s.as_bytes()),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;

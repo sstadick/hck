@@ -325,11 +325,11 @@ fn run<W: Write>(
             core.hck_input(input, writer, extra)?;
         }
         RegexOrString::String(s) => {
-            let s = unescape(s);
+            // let s = unescape(s);
             let mut core = Core::new(
                 conf,
                 &fields,
-                SubStrLineParser::new(&fields, &s),
+                SubStrLineParser::new(&fields, s.as_bytes()),
                 line_buffer,
             );
             core.hck_input(input, writer, extra)?;

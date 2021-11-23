@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.1
+
+- bugfix Apply unescaping to headers when selecting via `-F`
+
 ## v0.7.0
 
 - [Improvement](https://github.com/sstadick/hck/issues/46#issuecomment-974189408) Allow for passing escaped sequences in for the input and output delimiteres. i.e '\t' or '\n' can be passed in directly instead of needing to add $'\n' on the command line.

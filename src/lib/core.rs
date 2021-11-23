@@ -5,7 +5,7 @@
 //!
 //! If we go with a dyn trait on the line splitter function it is appreciably slower.
 use crate::{
-    field_range::{FieldRange, RegexOrStr},
+    field_range::{FieldRange, RegexOrString},
     line_parser::LineParser,
     mmap::MmapChoice,
     single_byte_delim_parser::SingleByteDelimParser,
@@ -48,7 +48,7 @@ pub struct CoreConfig<'a> {
     raw_exclude: Option<&'a str>,
     raw_exclude_headers: Option<&'a [Regex]>,
     header_is_regex: bool,
-    parsed_delim: RegexOrStr<'a>,
+    parsed_delim: RegexOrString,
 }
 
 impl<'a> Default for CoreConfig<'a> {
@@ -65,14 +65,16 @@ impl<'a> Default for CoreConfig<'a> {
             raw_exclude: None,
             raw_exclude_headers: None,
             header_is_regex: false,
-            parsed_delim: RegexOrStr::Str(DEFAULT_DELIM.to_str().unwrap()),
+            parsed_delim: RegexOrString::String(
+                std::str::from_utf8(DEFAULT_DELIM).unwrap().to_string(),
+            ),
         }
     }
 }
 
 impl<'a> CoreConfig<'a> {
     /// Get the parsed delimiter
-    pub fn parsed_delim(&self) -> &RegexOrStr<'a> {
+    pub fn parsed_delim(&self) -> &RegexOrString {
         &self.parsed_delim
     }
 
@@ -216,9 +218,12 @@ impl<'a> CoreConfigBuilder<'a> {
 
     pub fn build(mut self) -> Result<CoreConfig<'a>> {
         let delim = if self.config.is_parser_regex {
-            RegexOrStr::Regex(Regex::new(self.config.delimiter.to_str()?)?)
+            RegexOrString::Regex(Regex::new(self.config.delimiter.to_str()?)?)
         } else {
-            RegexOrStr::Str(self.config.delimiter.to_str()?)
+            let unescaped =
+                std::str::from_utf8(&grep_cli::unescape(self.config.delimiter.to_str()?))?
+                    .to_string();
+            RegexOrString::String(unescaped)
         };
         self.config.parsed_delim = delim;
         Ok(self.config)

@@ -335,7 +335,7 @@ checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
 name = "hck"
-version = "0.7.2-alpha.0"
+version = "0.7.2"
 dependencies = [
  "anyhow",
  "bstr",

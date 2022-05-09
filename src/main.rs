@@ -1,4 +1,5 @@
 use anyhow::{Context, Error, Result};
+use clap::Parser;
 use env_logger::Env;
 use flate2::Compression;
 use grep_cli::{stdout, unescape};
@@ -22,7 +23,6 @@ use std::{
     path::{Path, PathBuf},
     process::exit,
 };
-use structopt::{clap::AppSettings::ColoredHelp, StructOpt};
 use termcolor::ColorChoice;
 
 lazy_static! {
@@ -41,7 +41,7 @@ lazy_static! {
 }
 
 pub mod built_info {
-    use structopt::lazy_static::lazy_static;
+    use lazy_static::lazy_static;
 
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 
@@ -117,13 +117,8 @@ fn is_broken_pipe(err: &Error) -> bool {
 ///
 /// If `field-headers` is used as a regex then the headers will be be grouped together in groups that all matched the
 /// same regex, and in the order of the regex as specified on the CLI.
-#[derive(Debug, StructOpt)]
-#[structopt(
-    name = "hck",
-    author,
-    global_setting(ColoredHelp),
-    version = built_info::VERSION.as_str()
-)]
+#[derive(Debug, Parser)]
+#[clap(author, version = built_info::VERSION.as_str())]
 struct Opts {
     /// Input files to parse, defaults to stdin.
     ///
@@ -132,20 +127,20 @@ struct Opts {
     input: Vec<PathBuf>,
 
     /// Output file to write to, defaults to stdout
-    #[structopt(short = "o", long, allow_hyphen_values = true)]
+    #[clap(short, long, allow_hyphen_values = true)]
     output: Option<PathBuf>,
 
     /// Delimiter to use on input files, this is a substring literal by default. To treat it as a literal add the `-L` flag.
-    #[structopt(short = "d", long, default_value = r"\s+", allow_hyphen_values = true)]
+    #[clap(short, long, default_value = r"\s+", allow_hyphen_values = true)]
     delimiter: String,
 
     /// Treat the delimiter as a string literal. This can significantly improve performance, especially for single byte delimiters.
-    #[structopt(short = "L", long)]
+    #[clap(short = 'L', long)]
     delim_is_literal: bool,
 
     /// Use the input delimiter as the output delimiter if the input is literal and no other output delimiter has been set.
-    #[structopt(
-        short = "I",
+    #[clap(
+        short = 'I',
         long,
         requires("delim-is-literal"),
         conflicts_with("output-delimiter")
@@ -153,24 +148,24 @@ struct Opts {
     use_input_delim: bool,
 
     /// Delimiter string to use on outputs
-    #[structopt(short = "D", long, default_value = "\t", allow_hyphen_values = true)]
+    #[clap(short = 'D', long, default_value = "\t", allow_hyphen_values = true)]
     output_delimiter: String,
 
     /// Fields to keep in the output, ex: 1,2-,-5,2-5. Fields are 1-based and inclusive.
-    #[structopt(short = "f", long, allow_hyphen_values = true)]
+    #[clap(short, long, allow_hyphen_values = true)]
     fields: Option<String>,
 
     /// Fields to exclude from the output, ex: 3,9-11,15-. Exclude fields are 1 based and inclusive.
     /// Exclude fields take precedence over `fields`.
-    #[structopt(short = "e", long, allow_hyphen_values = true)]
+    #[clap(short = 'e', long, allow_hyphen_values = true)]
     exclude: Option<String>,
 
     /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
     /// Add the `-r` flag to treat as a regex.
-    #[structopt(
-        short = "E",
+    #[clap(
+        short = 'E',
         long,
-        multiple = true,
+        multiple_occurrences = true,
         number_of_values = 1,
         allow_hyphen_values = true
     )]
@@ -178,48 +173,48 @@ struct Opts {
 
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
     /// by default. add the `-r` flag to treat it as a regex.
-    #[structopt(
-        short = "F",
+    #[clap(
+        short = 'F',
         long,
-        multiple = true,
+        multiple_occurrences = true,
         number_of_values = 1,
         allow_hyphen_values = true
     )]
     header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
-    #[structopt(short = "r", long)]
+    #[clap(short = 'r', long)]
     header_is_regex: bool,
 
     /// Try to find the correct decompression method based on the file extensions
-    #[structopt(short = "z", long)]
+    #[clap(short = 'z', long)]
     try_decompress: bool,
 
     /// Try to gzip compress the output
-    #[structopt(short = "Z", long)]
+    #[clap(short = 'Z', long)]
     try_compress: bool,
 
     /// Threads to use for compression, 0 will result in `hck` staying single threaded.
-    #[structopt(short = "t", long, default_value=DEFAULT_CPUS.as_str())]
+    #[clap(short = 't', long, default_value=&DEFAULT_CPUS)]
     compression_threads: usize,
 
     /// Compression level
-    #[structopt(short = "l", long, default_value = "6")]
+    #[clap(short = 'l', long, default_value = "6")]
     compression_level: u32,
 
     /// Disallow the possibility of using mmap
-    #[structopt(long)]
+    #[clap(long)]
     no_mmap: bool,
 
     /// Support CRLF newlines
-    #[structopt(long)]
+    #[clap(long)]
     crlf: bool,
 }
 
 fn main() -> Result<()> {
     // TODO: move tests / add more tests
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
 
     let writer = select_output(opts.output.as_ref())?;
     // TODO: Support all flate2 compression targets via enum on `-Z`

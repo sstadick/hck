@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.2
+
+- [Improvement](https://github.com/sstadick/hck/pull/51) Update from structopt to clap v3
+- [Improvement] Updated deps
+
 ## v0.7.1
 
 - bugfix Apply unescaping to headers when selecting via `-F`

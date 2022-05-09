@@ -20,7 +20,7 @@ jobs:
             asset_name: hck-macos-amd64
           - os: windows-latest
             artifact_name: hck.exe
-            asset_name: hck-windows-amd64
+            asset_name: hck-windows-amd64.exe
 
     steps:
       - uses: actions/checkout@v2

@@ -480,7 +480,7 @@ where
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
-        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
+        let mut reader = LineBufferReader::new(reader, self.line_buffer);
         let mut buffer_parser = SingleByteDelimParser::new(
             self.config.line_terminator,
             self.config.output_delimiter,
@@ -502,7 +502,7 @@ where
         reader: R,
         mut output: W,
     ) -> Result<(), io::Error> {
-        let mut reader = LineBufferReader::new(reader, &mut self.line_buffer);
+        let mut reader = LineBufferReader::new(reader, self.line_buffer);
         let mut shuffler: Vec<Vec<&'static [u8]>> =
             vec![vec![]; self.fields.iter().map(|f| f.pos).max().unwrap() + 1];
         while reader.fill()? {

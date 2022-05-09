@@ -1,6 +1,6 @@
 
 
-# llvm_profdata := `find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm-profdata -type f`
+llvm_profdata := `find $(rustc --print sysroot) -name llvm-profdata -type f`
 
 pgo-data := join(justfile_directory(), "pgo-data")
 data := join(pgo-data, "data.csv")

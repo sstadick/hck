@@ -86,11 +86,11 @@ cd hck
 just install-native
 ```
 
+- PRs are both welcome and encouraged for adding more packaging options and build types! I'd especially welcome PRs for the windows family of package managers / general making sure things are windows friendly.
+
 ## Packaging status
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/hck.svg)](https://repology.org/project/hck/versions)
-
-- PRs are both welcome and encouraged for adding more packaging options and build types! I'd especially welcome PRs for the windows family of package managers / general making sure things are windows friendly.
 
 ## Examples
 

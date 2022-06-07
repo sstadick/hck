@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.5
+
+- [Bugfix] Invalid thirdparty file fixed
+
 ## v0.7.4
 
 - [Improvement] Updated deps to get latest gzp and thereby latest flate2, fix thirdparty.yml

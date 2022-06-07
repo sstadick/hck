@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.4
+
+- [Improvement] Updated deps to get latest gzp and thereby latest flate2, fix thirdparty.yml
+
 ## v0.7.3
 
 - [Improvement] Updated deps to get latest gzp and thereby latest flate2

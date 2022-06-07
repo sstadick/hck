@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.7.3
+
+- [Improvement] Updated deps to get latest gzp and thereby latest flate2
+
 ## v0.7.2
 
 - [Improvement](https://github.com/sstadick/hck/pull/51) Update from structopt to clap v3

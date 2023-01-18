@@ -157,6 +157,7 @@ impl<'a> CoreConfig<'a> {
             }
             (None, None) => (None, FieldRange::from_list("1-")?),
         };
+        eprintln!("Parsed: {:?}", fields);
 
         let fields = match (&self.raw_exclude, &self.raw_exclude_headers) {
             (Some(exclude), Some(exclude_header)) => {

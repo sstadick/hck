@@ -269,6 +269,8 @@ fn main() -> Result<()> {
         unescape(&opts.output_delimiter)
     };
 
+    eprintln!("Fields: {:?}", opts.header_field);
+
     let conf = conf_builder
         .mmap(mmap)
         .delimiter(opts.delimiter.as_bytes())
@@ -1057,6 +1059,30 @@ mod test {
         assert_eq!(
             filtered,
             vec![vec!["f", "a", "b", "c", "d"], vec!["6", "1", "2", "3", "4"]]
+        );
+    }
+
+    #[rstest]
+    fn test_reorder_merged_range(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts(&input_file, &output_file, "1,3,2,7,6", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![vec!["a", "c", "b", "g", "f"], vec!["1", "3", "2", "7", "6"]]
         );
     }
 

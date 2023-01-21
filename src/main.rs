@@ -269,8 +269,6 @@ fn main() -> Result<()> {
         unescape(&opts.output_delimiter)
     };
 
-    eprintln!("Fields: {:?}", opts.header_field);
-
     let conf = conf_builder
         .mmap(mmap)
         .delimiter(opts.delimiter.as_bytes())

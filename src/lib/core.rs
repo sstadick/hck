@@ -104,12 +104,12 @@ impl<'a> CoreConfig<'a> {
                         .map(|p| p.ends_with(".gz"))
                         .unwrap_or(false)
                     {
-                        Box::new(MultiGzDecoder::new(File::open(&path)?))
+                        Box::new(MultiGzDecoder::new(File::open(path)?))
                     } else {
                         Box::new(
                             DecompressionReaderBuilder::new()
                                 // .matcher(matcher)
-                                .build(&path)?,
+                                .build(path)?,
                         )
                     };
                     let mut reader = BufReader::new(reader);

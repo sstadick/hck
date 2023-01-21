@@ -24,26 +24,26 @@ lto = "fat"
 codegen-units = 1
 
 [dependencies]
-anyhow = "1.0.41"
-bstr = "0.2.16"
-clap = { version = "3.1", features = ["derive"] }
-env_logger = "0.9.0"
-flate2 = { version = "1.0", features = ["zlib-ng-compat"], default-features = false }
-gzp = {version = "0.10", default-features = false, features = ["deflate_zlib_ng","libdeflate"]}
-grep-cli = "0.1.6"
+anyhow = "1.0.68"
+bstr = "1.1.0"
+clap = { version = "4.1.1", features = ["derive"] }
+env_logger = "0.10.0"
+flate2 = { version = "1.0.25", features = ["zlib-ng-compat"], default-features = false }
+gzp = { version = "0.11.1", default-features = false, features = ["deflate_zlib_ng","libdeflate"] }
+grep-cli = "0.1.7"
 lazy_static = "1.4.0"
-log = "0.4.14"
-memmap = { package = "memmap2", version = "0.2.0" }
-memchr = "2.4.0"
-num_cpus = "1.13.0"
-regex = "1.5"
-ripline = "0.1"
-termcolor = "1.1.2"
-thiserror = "1.0.25"
+log = "0.4.17"
+memmap = { package = "memmap2", version = "0.5.8" }
+memchr = "2.5.0"
+num_cpus = "1.15.0"
+regex = "1.7.1"
+ripline = "0.1.0"
+termcolor = "1.2.0"
+thiserror = "1.0.38"
 
 [dev-dependencies]
-tempfile = "3.2.0"
-rstest = "0.10.0"
+tempfile = "3.3.0"
+rstest = "0.16.0"
 
 [build-dependencies]
-built = {version ="0.5.1", features = ["git2"]}
+built = { version = "0.5.2", features = ["git2"] }

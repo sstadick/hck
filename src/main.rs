@@ -162,24 +162,12 @@ struct Opts {
 
     /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
     /// Add the `-r` flag to treat as a regex.
-    #[clap(
-        short = 'E',
-        long,
-        multiple_occurrences = true,
-        number_of_values = 1,
-        allow_hyphen_values = true
-    )]
+    #[clap(short = 'E', long, number_of_values = 1, allow_hyphen_values = true)]
     exclude_header: Option<Vec<Regex>>,
 
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
     /// by default. add the `-r` flag to treat it as a regex.
-    #[clap(
-        short = 'F',
-        long,
-        multiple_occurrences = true,
-        number_of_values = 1,
-        allow_hyphen_values = true
-    )]
+    #[clap(short = 'F', long, number_of_values = 1, allow_hyphen_values = true)]
     header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
@@ -195,7 +183,7 @@ struct Opts {
     try_compress: bool,
 
     /// Threads to use for compression, 0 will result in `hck` staying single threaded.
-    #[clap(short = 't', long, default_value=&DEFAULT_CPUS)]
+    #[clap(short = 't', long, default_value=&DEFAULT_CPUS.as_str())]
     compression_threads: usize,
 
     /// Compression level

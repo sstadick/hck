@@ -58,7 +58,7 @@ clean-data: run-instrumented-binary
     rm {{gzip-data}}
 
 
-merge-prof-data llvm-profdata=`find ~/.rustup/toolchains/stable-*/lib/rustlib/*/bin/ -name llvm-profdata -type f`: clean-data prep
+merge-prof-data llvm-profdata=`find ~/.rustup/toolchains/*/lib/rustlib/*/bin/ -name llvm-profdata -type f`: clean-data prep
     @echo "Using llvm-profdata: {{llvm-profdata}}"
     {{llvm-profdata}} merge -o {{pgo-data}}/merged.profdata {{pgo-data}}
 

@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "hck"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "bstr 1.1.0",

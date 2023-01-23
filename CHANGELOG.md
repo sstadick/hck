@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.0
+
+- [Bugfix](https://github.com/sstadick/hck/issues/59) Fixed output column reordering
+- Updated deps and added dependabot
+
 ## v0.7.5
 
 - [Bugfix] Invalid thirdparty file fixed

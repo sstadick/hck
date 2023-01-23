@@ -195,9 +195,15 @@ impl FieldRange {
         Ok(ranges)
     }
 
+    // TODO: There is a very subtle bug in this sorting / mereging code.
+    // The tests have been updated to reflect it. In addition to sometimes merging overlaps, sometimes not,
+    // this will merge everlaps even when their positions are out of order, i.e. I want to output pos 2, then pos 1,
+    // but this will merge that into a range covering 1-2 and forget the pos ordering.
+
     /// Sort and merge overlaps in a set of [`Vec<FieldRange>`].
     pub fn post_process_ranges(ranges: &mut Vec<FieldRange>) {
         ranges.sort();
+
         // merge overlapping ranges
         let mut shifted = 0;
         for i in 0..ranges.len() {
@@ -208,8 +214,7 @@ impl FieldRange {
 
             while j < ranges.len()
                 && ranges[j].low <= ranges[i].high + 1
-                && (ranges[j].pos == ranges[i].pos
-                    || ranges[j].pos.saturating_sub(1) == ranges[i].pos)
+                && ranges[j].pos.saturating_sub(1) == ranges[i].pos
             {
                 let j_high = ranges.remove(j).high;
                 ranges[i].high = max(ranges[i].high, j_high);
@@ -334,6 +339,9 @@ mod test {
         assert_eq!(vec![FieldRange { low: 0, high: 3, pos: 0}], FieldRange::from_list("-4").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 7, pos: 0}], FieldRange::from_list("-4,5-8").unwrap());
         assert_eq!(vec![FieldRange { low: 0, high: 0, pos: 1 }, FieldRange { low: 2, high: 2, pos: 0}, FieldRange { low: 2, high: 2, pos: 2}], FieldRange::from_list("3,1,3").unwrap());
+        // Note the slightly odd pos ordering that happens here. This is an artifact of post_process_ranges, which needs some love
+        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0 }, FieldRange { low: 2, high: 2, pos: 1}, FieldRange { low: 3, high: 3, pos: 2}], FieldRange::from_list("1,2,3,4").unwrap());
+        assert_eq!(vec![FieldRange { low: 0, high: 1, pos: 0 }, FieldRange { low: 2, high: 2, pos: 2}, FieldRange { low: 3, high: 3, pos: 1}], FieldRange::from_list("1,2,4,3").unwrap());
     }
 
     #[test]

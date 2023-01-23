@@ -63,7 +63,7 @@ impl<'a> SingleByteDelimParser<'a> {
         mut output: W,
     ) -> Result<(), io::Error> {
         // Advance pasts first newline
-        if let Some(byte) = buffer.get(0) {
+        if let Some(byte) = buffer.first() {
             if *byte == self.newline {
                 output.join_append(
                     self.output_delimiter,

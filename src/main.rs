@@ -162,24 +162,12 @@ struct Opts {
 
     /// Headers to exclude from the output, ex: '^badfield.*$`. This is a string literal by default.
     /// Add the `-r` flag to treat as a regex.
-    #[clap(
-        short = 'E',
-        long,
-        multiple_occurrences = true,
-        number_of_values = 1,
-        allow_hyphen_values = true
-    )]
+    #[clap(short = 'E', long, number_of_values = 1, allow_hyphen_values = true)]
     exclude_header: Option<Vec<Regex>>,
 
     /// A string literal or regex to select headers, ex: '^is_.*$`. This is a string literal
     /// by default. add the `-r` flag to treat it as a regex.
-    #[clap(
-        short = 'F',
-        long,
-        multiple_occurrences = true,
-        number_of_values = 1,
-        allow_hyphen_values = true
-    )]
+    #[clap(short = 'F', long, number_of_values = 1, allow_hyphen_values = true)]
     header_field: Option<Vec<Regex>>,
 
     /// Treat the header_fields as regexs instead of string literals
@@ -195,7 +183,7 @@ struct Opts {
     try_compress: bool,
 
     /// Threads to use for compression, 0 will result in `hck` staying single threaded.
-    #[clap(short = 't', long, default_value=&DEFAULT_CPUS)]
+    #[clap(short = 't', long, default_value=&DEFAULT_CPUS.as_str())]
     compression_threads: usize,
 
     /// Compression level
@@ -1057,6 +1045,30 @@ mod test {
         assert_eq!(
             filtered,
             vec![vec!["f", "a", "b", "c", "d"], vec!["6", "1", "2", "3", "4"]]
+        );
+    }
+
+    #[rstest]
+    fn test_reorder_merged_range(
+        #[values(true, false)] no_mmap: bool,
+        #[values(r"\s+")] hck_delim: &str,
+    ) {
+        let tmp = TempDir::new().unwrap();
+        let input_file = tmp.path().join("input.txt");
+        let output_file = tmp.path().join("output.txt");
+        let opts = build_opts(&input_file, &output_file, "1,3,2,7,6", no_mmap, hck_delim);
+        let data = vec![
+            vec!["a", "b", "c", "d", "e", "f", "g"],
+            vec!["1", "2", "3", "4", "5", "6", "7"],
+        ];
+        write_file(&input_file, data, FOURSPACE);
+        run_wrapper(&input_file, &output_file, &opts);
+        let filtered = read_tsv(output_file);
+
+        // columns past end in fields are ignored
+        assert_eq!(
+            filtered,
+            vec![vec!["a", "c", "b", "g", "f"], vec!["1", "3", "2", "7", "6"]]
         );
     }
 

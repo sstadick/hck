@@ -26,10 +26,10 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.68"
 bstr = "1.1.0"
-clap = { version = "4.1.1", features = ["derive"] }
+clap = { version = "4.1.4", features = ["derive"] }
 env_logger = "0.10.0"
 flate2 = { version = "1.0.25", features = ["zlib-ng-compat"], default-features = false }
-gzp = { version = "0.11.1", default-features = false, features = ["deflate_zlib_ng","libdeflate"] }
+gzp = { version = "0.11.3", default-features = false, features = ["deflate_zlib_ng","libdeflate"] }
 grep-cli = "0.1.7"
 lazy_static = "1.4.0"
 log = "0.4.17"
@@ -40,10 +40,8 @@ regex = "1.7.1"
 ripline = "0.1.0"
 termcolor = "1.2.0"
 thiserror = "1.0.38"
+git-version = "0.3.5"
 
 [dev-dependencies]
 tempfile = "3.3.0"
 rstest = "0.16.0"
-
-[build-dependencies]
-built = { version = "0.5.2", features = ["git2"] }

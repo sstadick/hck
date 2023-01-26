@@ -49,7 +49,7 @@ jobs:
           mkdir -p "$staging"
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"
-          cp {build.rs,Cargo.toml,Cargo.lock} "$staging/"
+          cp {Cargo.toml,Cargo.lock} "$staging/"
           cp justfile "$staging/"
           cp -R ./src "./$staging/src"
 

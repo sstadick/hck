@@ -2,6 +2,7 @@ use anyhow::{Context, Error, Result};
 use clap::Parser;
 use env_logger::Env;
 use flate2::Compression;
+use git_version::git_version;
 use grep_cli::{stdout, unescape};
 use gzp::{deflate::Bgzf, ZBuilder};
 use hcklib::{
@@ -40,34 +41,13 @@ lazy_static! {
     };
 }
 
-pub mod built_info {
-    use lazy_static::lazy_static;
-
-    include!(concat!(env!("OUT_DIR"), "/built.rs"));
-
-    /// Get a software version string including
-    ///   - Git commit hash
-    ///   - Git dirty info (whether the repo had uncommitted changes)
-    ///   - Cargo package version if no git info found
-    fn get_software_version() -> String {
-        let prefix = if let Some(s) = GIT_COMMIT_HASH {
-            format!("{}-{}", PKG_VERSION, s[0..8].to_owned())
-        } else {
-            // This shouldn't happen
-            PKG_VERSION.to_string()
-        };
-        let suffix = match GIT_DIRTY {
-            Some(true) => "-dirty",
-            _ => "",
-        };
-        format!("{}{}", prefix, suffix)
-    }
-
-    lazy_static! {
-        /// Version of the software with git hash
-        pub static ref VERSION: String = get_software_version();
-    }
-}
+pub const HCK_VERSION: &str = git_version!(
+    cargo_prefix = "cargo:",
+    prefix = "git:",
+    // Note that on the CLI, the v* needs to be in single quotes
+    // When passed here though there seems to be some magic quoting that happens.
+    args = ["--always", "--dirty=-modified", "--match=v*"]
+);
 
 /// Determine if we should write to a file or stdout.
 fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write + Send + 'static>> {
@@ -118,7 +98,7 @@ fn is_broken_pipe(err: &Error) -> bool {
 /// If `field-headers` is used as a regex then the headers will be be grouped together in groups that all matched the
 /// same regex, and in the order of the regex as specified on the CLI.
 #[derive(Debug, Parser)]
-#[clap(author, version = built_info::VERSION.as_str())]
+#[clap(author, version = HCK_VERSION)]
 struct Opts {
     /// Input files to parse, defaults to stdin.
     ///

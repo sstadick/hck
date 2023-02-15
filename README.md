@@ -16,6 +16,8 @@ No single feature of `hck` on its own makes it stand out over `awk`, `cut`, `xsv
 It is meant to be simple and easy to use while exploring datasets.
 Think of this as filling a gap between `cut` and `awk`.
 
+`hck` is dual-licensed under MIT or the [UNLICENSE](https://unlicense.org/).
+
 ## Features
 
 - Reordering of output columns! i.e. if you use `-f4,2,8` the output columns will appear in the order `4`, `2`, `8`

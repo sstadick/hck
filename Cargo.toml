@@ -26,7 +26,7 @@ codegen-units = 1
 [dependencies]
 anyhow = "1.0.68"
 bstr = "1.1.0"
-clap = { version = "4.1.4", features = ["derive"] }
+clap = { version = "4.1.11", features = ["derive"] }
 env_logger = "0.10.0"
 flate2 = { version = "1.0.25", features = ["zlib-ng-compat"], default-features = false }
 gzp = { version = "0.11.3", default-features = false, features = ["deflate_zlib_ng","libdeflate"] }

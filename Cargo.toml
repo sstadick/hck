@@ -39,7 +39,7 @@ num_cpus = "1.15.0"
 regex = "1.7.1"
 ripline = "0.1.0"
 termcolor = "1.2.0"
-thiserror = "1.0.38"
+thiserror = "1.0.40"
 git-version = "0.3.5"
 
 [dev-dependencies]

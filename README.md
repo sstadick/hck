@@ -21,7 +21,7 @@ Think of this as filling a gap between `cut` and `awk`.
 ## Features
 
 - Reordering of output columns! i.e. if you use `-f4,2,8` the output columns will appear in the order `4`, `2`, `8`
-- Delimiter treated as a regex, i.e. you can split on multiple spaces without and extra pipe to `tr`!
+- Delimiter treated as a regex, i.e. you can split on multiple spaces without an extra pipe to `tr`!
 - Specification of output delimiter
 - Selection of columns by header string literal with the `-F` option, or by regex by setting the `-r` flag
 - Input files will be automatically decompressed if their file extension is recognizable and a local binary exists to perform the decompression (similar to ripgrep). See [Decompression](#decompression).

@@ -139,7 +139,7 @@ impl<'a> CoreConfig<'a> {
                     self.header_is_regex,
                     false,
                 )?;
-                fields.extend(header_fields.into_iter());
+                fields.extend(header_fields);
                 FieldRange::post_process_ranges(&mut fields);
                 (Some(first_line), fields)
             }

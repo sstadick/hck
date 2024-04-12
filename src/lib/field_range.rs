@@ -304,7 +304,7 @@ impl FieldRange {
                     exclusion = ex;
                 } else {
                     result.push(field);
-                    result.extend(fields.into_iter());
+                    result.extend(fields);
                     break;
                 }
             } else if field.high < exclusion.low {

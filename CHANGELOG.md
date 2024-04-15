@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.10.0
+
+- [feat](https://github.com/sstadick/hck/pull/84) Update deps from @0323pin
+
 ## v0.8.0
 
 - [Bugfix](https://github.com/sstadick/hck/issues/59) Fixed output column reordering

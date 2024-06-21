@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.10.1
+
+-[chore](https://github.com/sstadick/hck/pull/86) Update deps from @0323pin and includes fix for clippy lint
+
 ## v0.10.0
 
 - [feat](https://github.com/sstadick/hck/pull/84) Update deps from @0323pin

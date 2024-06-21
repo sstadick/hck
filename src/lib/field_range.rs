@@ -74,7 +74,7 @@ impl FromStr for FieldRange {
                     Err(FieldError::FailedParse(nm.to_owned()))
                 }
             }
-            (Some(n), Some(m)) if m.is_empty() => {
+            (Some(n), Some("")) => {
                 if let Ok(low) = n.parse::<usize>() {
                     if low > 0 {
                         Ok(FieldRange {
@@ -89,7 +89,7 @@ impl FromStr for FieldRange {
                     Err(FieldError::FailedParse(n.to_owned()))
                 }
             }
-            (Some(n), Some(m)) if n.is_empty() => {
+            (Some(""), Some(m)) => {
                 if let Ok(high) = m.parse::<usize>() {
                     if high > 0 {
                         Ok(FieldRange {

@@ -24,24 +24,24 @@ lto = "fat"
 codegen-units = 1
 
 [dependencies]
-anyhow = "1.0.89"
-bstr = "1.10.0"
-clap = { version = "4.5.18", features = ["derive"] }
+anyhow = "1.0.93"
+bstr = "1.11.0"
+clap = { version = "4.5.21", features = ["derive"] }
 env_logger = "0.11.5"
-flate2 = { version = "1.0.33", features = ["zlib-ng-compat"], default-features = false }
+flate2 = { version = "1.0.35", features = ["zlib-ng-compat"], default-features = false }
 gzp = { version = "0.11.3", default-features = false, features = ["deflate_zlib_ng","libdeflate"] }
-grep-cli = "0.1.10"
+grep-cli = "0.1.11"
 lazy_static = "1.5.0"
 log = "0.4.22"
 memmap = { package = "memmap2", version = "0.9.5" }
 memchr = "2.7.4"
 num_cpus = "1.16.0"
-regex = "1.10.6"
+regex = "1.11.1"
 ripline = "0.1.0"
 termcolor = "1.4.1"
-thiserror = "1.0.64"
+thiserror = "2.0.3"
 git-version = "0.3.9"
 
 [dev-dependencies]
-tempfile = "3.12.0"
-rstest = "0.22.0"
+tempfile = "3.14.0"
+rstest = "0.23.0"

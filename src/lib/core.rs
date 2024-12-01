@@ -26,7 +26,7 @@ use std::{
     path::Path,
 };
 
-const DEFAULT_DELIM: &[u8] = &[b'\t'];
+const DEFAULT_DELIM: &[u8] = b"\t";
 
 /// The input types that `hck` can parse.
 pub enum HckInput<P: AsRef<Path>> {
@@ -426,6 +426,7 @@ where
     /// Iterate over the lines in a slice of bytes.
     ///
     /// The input slice of bytes is assumed to end in a newline.
+    #[allow(clippy::missing_transmute_annotations)]
     pub fn hck_bytes<W>(&mut self, bytes: &[u8], mut output: W) -> Result<(), io::Error>
     where
         W: Write,
@@ -497,6 +498,7 @@ where
     }
 
     /// Process lines from a reader.
+    #[allow(clippy::missing_transmute_annotations)]
     pub fn hck_reader<R: Read, W: Write>(
         &mut self,
         reader: R,

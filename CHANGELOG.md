@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11.1
+
+- [chore](https://github.com/sstadick/hck/pull/92) from @0323pin, updates deps
+
 ## v0.11.0
 
 -[chore](https://github.com/sstadick/hck/pull/91) from @0323pin, updates deps, fixes clippy lints, updates rust version to 1.81.0.

@@ -51,7 +51,7 @@ pub struct CoreConfig<'a> {
     parsed_delim: RegexOrString,
 }
 
-impl<'a> Default for CoreConfig<'a> {
+impl Default for CoreConfig<'_> {
     fn default() -> Self {
         Self {
             delimiter: DEFAULT_DELIM,
@@ -72,7 +72,7 @@ impl<'a> Default for CoreConfig<'a> {
     }
 }
 
-impl<'a> CoreConfig<'a> {
+impl CoreConfig<'_> {
     /// Get the parsed delimiter
     pub fn parsed_delim(&self) -> &RegexOrString {
         &self.parsed_delim
@@ -297,7 +297,7 @@ impl<'a> CoreConfigBuilder<'a> {
     }
 }
 
-impl<'a> Default for CoreConfigBuilder<'a> {
+impl Default for CoreConfigBuilder<'_> {
     fn default() -> Self {
         Self::new()
     }

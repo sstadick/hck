@@ -39,7 +39,7 @@ jobs:
             # https://github.com/rust-lang/rust/issues/61002
             cargo build --release --locked
           else
-            just build
+            cargo build --release --locked
           fi
 
       - name: Build archive
@@ -50,7 +50,6 @@ jobs:
 
           cp {README.md,UNLICENSE,LICENSE-MIT} "$staging/"
           cp {Cargo.toml,Cargo.lock} "$staging/"
-          cp justfile "$staging/"
           cp -R ./src "./$staging/src"
 
 
@@ -58,8 +57,6 @@ jobs:
             7z a "${staging}.zip" "$staging"
             echo "ASSET=${staging}.zip" >> $GITHUB_ENV
           else
-            mkdir -p "${staging}/pgo-data"
-            cp ./pgo-data/merged.profdata "./${staging}/pgo-data/merged.profdata"
             tar czf "${staging}.tar.gz" "${staging}"
             echo "ASSET=${staging}.tar.gz" >> $GITHUB_ENV
           fi
@@ -70,7 +67,7 @@ jobs:
           if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
             cargo install cargo-deb
             asset_path="${{ matrix.asset_name }}.deb"
-            RUSTFLAGS="-Cllvm-args=-pgo-warn-missing-function -Cprofile-use=$(pwd)/pgo-data/merged.profdata" cargo deb --output ./"${asset_path}"
+            cargo deb --output ./"${asset_path}"
             echo "DEB=${asset_path}" >> $GITHUB_ENV
           fi
 
@@ -83,7 +80,7 @@ jobs:
           asset_name: ${{ env.DEB }}
           tag: ${{ github.ref }}
 
-      - name: Upload src and pgo data to release
+      - name: Upload src to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}

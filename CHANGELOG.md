@@ -1,8 +1,12 @@
 # Changelog
 
-## v0.11.3
+## v0.11.4
 
 - chore: fix publish workflow by removing PGO artifacts
+
+## v0.11.3
+
+- no-op while fixing publish workflow
 
 ## v0.11.2
 

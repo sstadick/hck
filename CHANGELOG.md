@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11.2
+
+- [chore](https://github.com/sstadick/hck/pull/94) from @0323pin, updates deps
+
 ## v0.11.1
 
 - [chore](https://github.com/sstadick/hck/pull/92) from @0323pin, updates deps

@@ -66,6 +66,13 @@ curl -LO https://github.com/sstadick/hck/releases/download/<latest>/hck-linux-am
 sudo dpkg -i hck-linux-amd64.deb
 ```
 
+- Windows (with [scoop](https://scoop.sh/))
+
+```bash
+scoop bucket add scoop-aoks https://github.com/AntonOks/scoop-aoks.git
+scoop install hck-aoks
+```
+
 \* Built with profile guided optimizations
 
 - With the Rust toolchain:

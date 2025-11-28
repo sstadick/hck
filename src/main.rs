@@ -4,7 +4,7 @@ use env_logger::Env;
 use flate2::Compression;
 use git_version::git_version;
 use grep_cli::{stdout, unescape};
-use gzp::{deflate::Bgzf, ZBuilder};
+use gzp::{ZBuilder, deflate::Bgzfr};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
     field_range::RegexOrString,
@@ -15,8 +15,8 @@ use lazy_static::lazy_static;
 use log::{error, warn};
 use regex::bytes::Regex;
 use ripline::{
-    line_buffer::{LineBuffer, LineBufferBuilder},
     LineTerminator,
+    line_buffer::{LineBuffer, LineBufferBuilder}, 
 };
 use std::{
     fs::File,
@@ -198,7 +198,9 @@ fn main() -> Result<()> {
     };
 
     if opts.input.is_empty() && opts.try_decompress && opts.header_field.is_some() {
-        warn!("Selections based on header fields is not currently supported on STDIN compressed data.");
+        warn!(
+            "Selections based on header fields is not currently supported on STDIN compressed data."
+        );
     }
 
     let inputs: Vec<HckInput<PathBuf>> = if opts.input.is_empty() {

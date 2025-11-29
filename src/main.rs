@@ -4,7 +4,7 @@ use env_logger::Env;
 use flate2::Compression;
 use git_version::git_version;
 use grep_cli::{stdout, unescape};
-use gzp::{deflate::Bgzfr, ZBuilder};
+use gzp::{deflate::Bgzf, ZBuilder};
 use hcklib::{
     core::{Core, CoreConfig, CoreConfigBuilder, HckInput},
     field_range::RegexOrString,

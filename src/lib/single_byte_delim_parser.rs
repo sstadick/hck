@@ -63,8 +63,8 @@ impl<'a> SingleByteDelimParser<'a> {
         mut output: W,
     ) -> Result<(), io::Error> {
         // Advance pasts first newline
-        if let Some(byte) = buffer.first() {
-            if *byte == self.newline {
+        if let Some(byte) = buffer.first()
+            && *byte == self.newline {
                 output.join_append(
                     self.output_delimiter,
                     std::iter::empty(),
@@ -72,7 +72,6 @@ impl<'a> SingleByteDelimParser<'a> {
                 )?;
                 self.offset += 1;
             }
-        }
 
         while self.offset < buffer.len() {
             self.fill_line(buffer)?;

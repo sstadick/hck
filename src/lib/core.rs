@@ -16,9 +16,9 @@ use flate2::read::MultiGzDecoder;
 use grep_cli::DecompressionReaderBuilder;
 use regex::bytes::Regex;
 use ripline::{
-    LineTerminator,
     line_buffer::{LineBuffer, LineBufferReader},
     lines::{self, LineIter},
+    LineTerminator,
 };
 use std::{
     fs::File,

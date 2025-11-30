@@ -64,14 +64,15 @@ impl<'a> SingleByteDelimParser<'a> {
     ) -> Result<(), io::Error> {
         // Advance pasts first newline
         if let Some(byte) = buffer.first()
-            && *byte == self.newline {
-                output.join_append(
-                    self.output_delimiter,
-                    std::iter::empty(),
-                    &self.line_terminator,
-                )?;
-                self.offset += 1;
-            }
+            && *byte == self.newline
+        {
+            output.join_append(
+                self.output_delimiter,
+                std::iter::empty(),
+                &self.line_terminator,
+            )?;
+            self.offset += 1;
+        }
 
         while self.offset < buffer.len() {
             self.fill_line(buffer)?;

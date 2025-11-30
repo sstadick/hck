@@ -73,7 +73,7 @@ fn is_broken_pipe(err: &Error) -> bool {
     if let Some(io_err) = err.downcast_ref::<io::Error>()
         && io_err.kind() == io::ErrorKind::BrokenPipe
     {
-            return true;
+        return true;
     }
     false
 }

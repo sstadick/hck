@@ -71,9 +71,10 @@ fn select_output<P: AsRef<Path>>(output: Option<P>) -> Result<Box<dyn Write + Se
 #[inline]
 fn is_broken_pipe(err: &Error) -> bool {
     if let Some(io_err) = err.downcast_ref::<io::Error>()
-        && io_err.kind() == io::ErrorKind::BrokenPipe {
+        && io_err.kind() == io::ErrorKind::BrokenPipe
+    {
             return true;
-        }
+    }
     false
 }
 /// * `delimiter` is a regex by default and a fixed substring with `-L`

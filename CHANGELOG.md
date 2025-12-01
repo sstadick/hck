@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.11.5
+
+- [chore](https://github.com/sstadick/hck/pull/97) from @0323pin, updates deps
+
 ## v0.11.4
 
 - chore: fix publish workflow by removing PGO artifacts

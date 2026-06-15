@@ -37,10 +37,9 @@ Think of this as filling a gap between `cut` and `awk`.
 
 ## Install
 
-- Homebrew / Linuxbrew
+- Homebrew
 
 ```bash
-brew tap sstadick/hck
 brew install hck
 ```
 
